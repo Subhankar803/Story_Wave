@@ -14,15 +14,32 @@ from app.services.retriever import simple_text_embedding
 
 def infer_entity_type(attribute: str, value: str, entity_name: str) -> str:
     """Infer entity type based on attribute and name heuristics."""
-    attr = attribute.lower()
-    if attr in ("location", "place"):
+    name_low = entity_name.lower().strip()
+    attr_low = attribute.lower().strip()
+
+    # Known place patterns in entity name
+    place_keywords = ("delhi", "mumbai", "forest", "kingdom", "citadel", "castle", "fortress", "city", "river", "bridge", "beach")
+    if any(k in name_low for k in place_keywords):
         return "place"
-    if attr in ("possession", "object", "item"):
-        return "object"
-    if attr in ("organization", "group", "faction"):
+
+    # Known organization patterns
+    org_keywords = ("guild", "order", "archives", "council", "clan", "guard", "scouts", "army")
+    if any(k in name_low for k in org_keywords):
         return "organization"
-    if attr in ("world_rule", "rule"):
+
+    # Known rule patterns
+    if attr_low in ("world_rule", "rule") or "rule" in name_low:
         return "rule"
+
+    # Known object patterns
+    object_keywords = ("watch", "key", "sword", "blade", "staff", "lantern", "scroll", "book", "letter", "sigil")
+    if any(k in name_low for k in object_keywords):
+        return "object"
+
+    # Standard character traits and relationships
+    if attr_low in ("appearance", "age", "knowledge", "relationship", "emotion", "ability", "possession", "location", "event"):
+        return "character"
+
     return "character"
 
 
@@ -78,6 +95,17 @@ class ChapterExtractor:
                 self.db.flush()
                 existing_entities[name_lower] = entity
                 entities_created.append(entity)
+
+            # Also register referenced locations as place entities
+            if rf.attribute.lower() in ("location", "place") and rf.value:
+                val_clean = rf.value.strip()
+                val_lower = val_clean.lower()
+                if val_clean and val_lower not in existing_entities:
+                    place_entity = Entity(story_id=story_id, name=val_clean, type="place")
+                    self.db.add(place_entity)
+                    self.db.flush()
+                    existing_entities[val_lower] = place_entity
+                    entities_created.append(place_entity)
 
             # Generate embedding vector
             embedding_vec = simple_text_embedding(f"{rf.entity} {rf.attribute} {rf.value} {rf.quote}")

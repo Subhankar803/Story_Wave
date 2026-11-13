@@ -1,0 +1,331 @@
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Story Bible — AI Storytelling & Consistency Engine</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Merriweather:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="app-body antialiased selection:bg-teal-500/30 selection:text-teal-300">
+
+  <div class="flex flex-col h-screen overflow-hidden">
+
+    <!-- SECTION 1: MAIN HEADER -->
+    <header class="app-surface border-b app-border px-6 py-3 flex items-center justify-between shrink-0 z-20">
+      <div class="flex items-center gap-3">
+        <span class="text-xl p-1.5 rounded-lg bg-teal-500/10 border border-teal-500/20 text-teal-400">🪶</span>
+        <div class="flex items-center gap-2.5">
+          <span class="font-bold tracking-wider text-sm md:text-base app-text-primary">STORY WAVE</span>
+          <span id="backendStatusBadge" class="text-[11px] px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-400 border border-slate-500/20 font-medium flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+            <span>Connecting...</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button id="themeToggleBtn" class="theme-toggle-btn flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border app-border transition-all" aria-label="Toggle Theme">
+          <span id="themeSunIcon" class="opacity-50">☀️</span>
+          <span class="text-slate-400">/</span>
+          <span id="themeMoonIcon" class="opacity-100">🌙</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- SECTION 2: STORY CONTROL BAR -->
+    <section class="app-surface-secondary border-b app-border px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0 z-10">
+      <!-- Left: Story Title -->
+      <div class="flex items-center gap-2">
+        <h1 id="storyTitleDisplay" class="text-base md:text-lg font-semibold app-text-primary tracking-tight">The Last Kingdom</h1>
+        <input id="storyTitleInput" type="text" class="hidden text-base md:text-lg font-semibold px-2 py-0.5 rounded border border-teal-500 bg-transparent app-text-primary focus:outline-none" value="The Last Kingdom" />
+        <button id="editTitleBtn" class="p-1.5 rounded-md hover:bg-slate-500/10 app-text-muted hover:text-teal-400 transition" title="Edit Story Title">
+          ✏️
+        </button>
+      </div>
+
+      <!-- Right: Action Controls -->
+      <div class="flex items-center gap-2.5">
+        <button id="loadDemoBtn" class="btn-secondary flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium border app-border hover:border-teal-500 transition" title="Load Planted-Contradiction Demo Story">
+          <span>🧪</span>
+          <span>Load Demo</span>
+        </button>
+
+        <button id="saveStoryBtn" class="btn-secondary flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium border app-border transition">
+          <span id="saveBtnIcon">💾</span>
+          <span id="saveBtnText">Save</span>
+        </button>
+
+        <button id="openGraphBtn" class="btn-secondary flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium border app-border transition">
+          <span>🕸</span>
+          <span>Graph</span>
+        </button>
+
+        <button id="analyzeStoryBtn" class="btn-primary flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs sm:text-sm font-semibold text-white shadow-sm transition">
+          <span>🔍</span>
+          <span>Analyze</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- SECTION 3: HORIZONTAL CHAPTER NAVIGATION -->
+    <nav class="app-surface border-b app-border px-6 py-2 flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0">
+      <div id="chapterTabsContainer" class="flex items-center gap-1.5"></div>
+      <button id="addChapterBtn" class="px-3 py-1 rounded-md text-xs font-medium app-text-muted hover:text-teal-400 hover:bg-teal-500/10 border border-transparent hover:border-teal-500/20 transition shrink-0">
+        + New Chapter
+      </button>
+    </nav>
+
+    <!-- SECTION 4: MAIN WORKSPACE -->
+    <main class="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+
+      <!-- LEFT SIDE: STORY EDITOR (72% desktop width) -->
+      <section class="w-full lg:w-[72%] h-full flex flex-col border-b lg:border-b-0 lg:border-r app-border overflow-hidden relative">
+
+        <!-- Editor Top Sub-bar -->
+        <div class="editor-top-subbar px-6 py-2 border-b app-border flex items-center justify-between text-xs app-text-muted shrink-0">
+          <div class="flex items-center gap-3">
+            <span id="activeChapterIndicator" class="font-medium text-teal-400">Chapter 1: Shadows of Delhi</span>
+            <span class="hidden sm:inline">•</span>
+            <span id="lastSavedIndicator" class="hidden sm:inline">All changes saved locally</span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button id="toggleHighlightBtn" class="px-2.5 py-1 rounded text-xs font-medium bg-teal-500/10 text-teal-400 border border-teal-500/20 hover:bg-teal-500/20 transition">
+              ✨ Highlights: On
+            </button>
+          </div>
+        </div>
+
+        <!-- Inline Preview Banner (For Next Scene / Dialogue / Branch preview) -->
+        <div id="editorPreviewBanner" class="hidden px-6 py-3 bg-teal-500/10 border-b border-teal-500/30 flex items-center justify-between gap-4 shrink-0">
+          <div class="text-xs sm:text-sm app-text-primary flex-1">
+            <span class="font-semibold text-teal-400 uppercase tracking-wider text-[11px] block mb-0.5">Previewing AI Suggestion</span>
+            <p id="previewBannerText" class="italic app-text-secondary line-clamp-2"></p>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button id="confirmPreviewInsertBtn" class="px-3 py-1 rounded bg-teal-500 hover:bg-teal-600 text-white text-xs font-semibold transition">Insert into Story</button>
+            <button id="closePreviewBannerBtn" class="px-2.5 py-1 rounded border app-border text-xs app-text-muted hover:text-red-400 transition">Dismiss</button>
+          </div>
+        </div>
+
+        <!-- Main Editable Writing Canvas -->
+        <div class="flex-1 overflow-y-auto px-6 sm:px-12 md:px-16 py-8 editor-scroll-container">
+          <div id="storyEditor" contenteditable="true" spellcheck="true" class="story-editor max-w-3xl mx-auto focus:outline-none leading-relaxed text-base md:text-lg" data-placeholder="Begin writing or paste your story here..."></div>
+        </div>
+
+        <!-- Editor Bottom Status Bar -->
+        <div class="px-6 py-2 border-t app-border app-surface-secondary flex items-center justify-between text-xs app-text-muted shrink-0">
+          <div class="flex items-center gap-4">
+            <span>Words: <strong id="wordCountDisplay" class="app-text-primary font-semibold">0</strong></span>
+            <span>Characters: <strong id="charCountDisplay" class="app-text-primary font-semibold">0</strong></span>
+            <span class="hidden sm:inline">Reading time: <strong id="readTimeDisplay" class="app-text-primary font-semibold">1 min</strong></span>
+          </div>
+          <div id="editorStatusPill" class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+            <span>1 Consistency Flag Detected</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT SIDE: STORY INSIGHTS (28% desktop width) -->
+      <aside class="w-full lg:w-[28%] h-72 lg:h-full flex flex-col app-surface overflow-hidden shrink-0">
+        <!-- Header -->
+        <div class="px-4 py-2.5 border-b app-border flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-2">
+            <span class="text-sm">📖</span>
+            <h2 class="text-xs font-bold uppercase tracking-wider app-text-primary">Story Insights</h2>
+          </div>
+          <span id="insightsStatusBadge" class="text-[11px] px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-400 font-medium">Synced</span>
+        </div>
+
+        <!-- Compact Category Tabs -->
+        <div class="grid grid-cols-5 border-b app-border app-surface-secondary px-1 pt-1 shrink-0">
+          <button data-insight-tab="characters" class="insight-tab active-insight-tab py-2 px-1 text-[11px] font-medium flex flex-col items-center gap-0.5 border-b-2 transition">
+            <span>👤</span>
+            <span class="truncate max-w-full">Characters</span>
+          </button>
+          <button data-insight-tab="places" class="insight-tab py-2 px-1 text-[11px] font-medium flex flex-col items-center gap-0.5 border-b-2 border-transparent transition">
+            <span>📍</span>
+            <span class="truncate max-w-full">Places</span>
+          </button>
+          <button data-insight-tab="timeline" class="insight-tab py-2 px-1 text-[11px] font-medium flex flex-col items-center gap-0.5 border-b-2 border-transparent transition">
+            <span>🕒</span>
+            <span class="truncate max-w-full">Timeline</span>
+          </button>
+          <button data-insight-tab="rules" class="insight-tab py-2 px-1 text-[11px] font-medium flex flex-col items-center gap-0.5 border-b-2 border-transparent transition">
+            <span>🛡️</span>
+            <span class="truncate max-w-full">Rules</span>
+          </button>
+          <button data-insight-tab="flags" class="insight-tab py-2 px-1 text-[11px] font-medium flex flex-col items-center gap-0.5 border-b-2 border-transparent relative transition">
+            <span>🚩</span>
+            <span class="truncate max-w-full">Flags</span>
+            <span id="flagTabCountBadge" class="absolute top-1 right-2 w-4 h-4 rounded-full bg-amber-500 text-slate-950 text-[10px] font-bold flex items-center justify-center">1</span>
+          </button>
+        </div>
+
+        <!-- Selected Tab Content Container -->
+        <div id="insightContentContainer" class="flex-1 overflow-y-auto p-4 space-y-2.5"></div>
+      </aside>
+    </main>
+
+    <!-- SECTION 5: AI ASSISTANT (COLLAPSIBLE BOTTOM BAR & DRAWER) -->
+    <footer class="app-surface border-t app-border shrink-0 relative z-20">
+
+      <!-- Pop-up Compact Tool Drawer (Hidden unless an AI tool is selected) -->
+      <div id="aiActiveToolPanel" class="hidden border-b app-border app-surface-elevated max-h-80 overflow-y-auto px-6 py-4 shadow-2xl">
+        <div class="max-w-6xl mx-auto">
+          <div class="flex items-center justify-between pb-3 mb-3 border-b app-border">
+            <div class="flex items-center gap-2">
+              <span id="aiPanelTitleIcon" class="text-base">➡</span>
+              <h3 id="aiPanelTitleText" class="text-sm font-bold app-text-primary">Next Scene Suggestions</h3>
+              <span class="text-[11px] px-2 py-0.5 rounded bg-teal-500/10 text-teal-400 font-medium">Checked against Story Bible</span>
+            </div>
+            <button id="closeAiToolPanelBtn" class="text-xs px-2.5 py-1 rounded border app-border app-text-muted hover:text-teal-400 transition">
+              Close Panel ✕
+            </button>
+          </div>
+
+          <!-- Dynamic Content Area for Sections 6, 7, 8, 9 -->
+          <div id="aiToolDynamicBody"></div>
+        </div>
+      </div>
+
+      <!-- Compact Collapsible AI Assistant Bar -->
+      <div class="px-6 py-2 flex flex-wrap items-center justify-between gap-3">
+        <button id="toggleAiAssistantBtn" class="flex items-center gap-2 text-xs sm:text-sm font-semibold app-text-primary hover:text-teal-400 transition">
+          <span class="p-1 rounded bg-teal-500/15 text-teal-400">✨</span>
+          <span>AI ASSISTANT</span>
+          <span class="text-xs app-text-muted font-normal hidden md:inline">— Smart background story co-pilot</span>
+          <span id="aiAssistantChevron" class="ml-1 text-xs transition-transform duration-200">⌃</span>
+        </button>
+
+        <!-- Tool Buttons Row (Shown when expanded) -->
+        <div id="aiToolsButtonRow" class="hidden flex items-center flex-wrap gap-2">
+          <button data-ai-tool="nextScene" class="ai-tool-btn px-3 py-1.5 rounded-lg text-xs font-medium border app-border flex items-center gap-1.5 transition">
+            <span>➡</span>
+            <span>Next Scene</span>
+          </button>
+          <button data-ai-tool="dialogue" class="ai-tool-btn px-3 py-1.5 rounded-lg text-xs font-medium border app-border flex items-center gap-1.5 transition">
+            <span>💬</span>
+            <span>Dialogue</span>
+          </button>
+          <button data-ai-tool="branches" class="ai-tool-btn px-3 py-1.5 rounded-lg text-xs font-medium border app-border flex items-center gap-1.5 transition">
+            <span>🌿</span>
+            <span>Branches</span>
+          </button>
+          <button data-ai-tool="voice" class="ai-tool-btn px-3 py-1.5 rounded-lg text-xs font-medium border app-border flex items-center gap-1.5 transition">
+            <span>🎙️</span>
+            <span>Voice Studio</span>
+          </button>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- MODAL 1: STORY RELATIONSHIP GRAPH OVERLAY -->
+  <div id="graphModalOverlay" class="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 hidden items-center justify-center p-4 sm:p-6">
+    <div class="app-surface border app-border rounded-2xl w-full max-w-5xl h-[82vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Modal Header -->
+      <div class="px-6 py-4 border-b app-border flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2.5">
+          <span class="text-lg">🕸</span>
+          <div>
+            <h2 class="text-base font-bold app-text-primary">Story Bible Relationship Graph</h2>
+            <p class="text-xs app-text-muted">Click any node to inspect entity attributes and story connections</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button id="zoomOutGraphBtn" class="px-2.5 py-1 rounded border app-border text-xs font-semibold app-text-primary hover:border-teal-500 transition" title="Zoom Out">−</button>
+          <span id="graphZoomLevel" class="text-xs app-text-muted font-mono w-12 text-center">100%</span>
+          <button id="zoomInGraphBtn" class="px-2.5 py-1 rounded border app-border text-xs font-semibold app-text-primary hover:border-teal-500 transition" title="Zoom In">+</button>
+          <button id="resetGraphZoomBtn" class="px-2.5 py-1 rounded border app-border text-xs app-text-muted hover:text-teal-400 transition">Reset</button>
+          <button id="closeGraphModalBtn" class="ml-2 px-3 py-1 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-semibold transition">Close ✕</button>
+        </div>
+      </div>
+
+      <!-- Graph Body -->
+      <div class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        <!-- SVG Interactive Canvas -->
+        <div class="flex-1 graph-canvas-bg overflow-hidden flex items-center justify-center relative">
+          <div id="graphTransformWrapper" class="transition-transform duration-200 origin-center w-full h-full flex items-center justify-center">
+            <svg id="relationshipGraphSvg" viewBox="0 0 800 480" class="w-full h-full max-w-4xl select-none"></svg>
+          </div>
+
+          <!-- Legend -->
+          <div class="absolute bottom-4 left-4 app-surface/90 border app-border rounded-lg px-3 py-2 text-[11px] flex items-center gap-4 shadow">
+            <span class="flex items-center gap-1.5 app-text-secondary"><span class="w-2.5 h-2.5 rounded-full bg-teal-500 inline-block"></span> Character</span>
+            <span class="flex items-center gap-1.5 app-text-secondary"><span class="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block"></span> Location</span>
+            <span class="flex items-center gap-1.5 app-text-secondary"><span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span> World Rule / Entity</span>
+          </div>
+        </div>
+
+        <!-- Selected Node Inspector Drawer -->
+        <div class="w-full md:w-72 border-t md:border-t-0 md:border-l app-border app-surface-secondary p-5 flex flex-col justify-between shrink-0">
+          <div id="graphNodeInspector">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-teal-400">Node Inspector</span>
+            <h3 id="inspectorNodeTitle" class="text-base font-bold app-text-primary mt-1">👤 Aarav</h3>
+            <p id="inspectorNodeType" class="text-xs app-text-muted mb-3">Protagonist • Age 20</p>
+            <div id="inspectorNodeDetails" class="text-xs app-text-secondary space-y-2 border-t app-border pt-3">
+              <p>Reluctant heir searching for the truth behind the fallen northern citadel.</p>
+              <div class="pt-1">
+                <span class="font-semibold app-text-primary block mb-1">Active Connections:</span>
+                <ul class="space-y-1 text-teal-400">
+                  <li>• Friend → Diya</li>
+                  <li>• Enemy → Varun</li>
+                  <li>• Origin → Delhi</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="pt-4 border-t app-border text-[11px] app-text-muted">
+            Tip: Relationships update automatically when you run <strong>Analyze</strong>.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: AI ANALYSIS PROGRESS OVERLAY -->
+  <div id="analyzeModalOverlay" class="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="app-surface border app-border rounded-2xl w-full max-w-md p-6 shadow-2xl">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2.5">
+          <span id="analyzeSpinnerIcon" class="text-xl animate-spin inline-block">⚙️</span>
+          <div>
+            <h3 id="analyzeModalHeading" class="text-base font-bold app-text-primary">Analyzing Story Bible...</h3>
+            <p class="text-xs app-text-muted">Cross-checking entities, timeline, and world rules</p>
+          </div>
+        </div>
+        <span id="analyzePercentBadge" class="text-xs font-mono font-bold text-teal-400">0%</span>
+      </div>
+
+      <!-- Progress Bar -->
+      <div class="w-full h-2 rounded-full bg-slate-500/20 overflow-hidden mb-5">
+        <div id="analyzeProgressBar" class="h-full bg-teal-500 transition-all duration-300 w-0"></div>
+      </div>
+
+      <!-- Step-by-step Checklist -->
+      <ul id="analyzeStepsList" class="space-y-2.5 text-xs"></ul>
+
+      <!-- Completion Banner -->
+      <div id="analyzeCompleteFooter" class="hidden mt-5 pt-4 border-t app-border flex items-center justify-between">
+        <span class="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">✓ Analysis Complete — 1 Flag Found</span>
+        <button id="finishAnalyzeModalBtn" class="px-4 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-600 text-white text-xs font-semibold transition">
+          View Insights
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connect Vanilla JS File -->
+  <script src="script.js"></script>
+</body>
+</html>

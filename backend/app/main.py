@@ -1,7 +1,9 @@
-"""FastAPI entrypoint: app factory, CORS, routers, rate limiting."""
+"""FastAPI entrypoint: app factory, CORS, routers, rate limiting, and frontend serving."""
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from pathlib import Path
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from app.api.routes import (
     auth_router,
     bible_router,
@@ -16,6 +18,8 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.db.base import Base
 from app.db.session import engine
+
+frontend_dir = Path(__file__).resolve().parent.parent.parent / "Frontend"
 
 
 @asynccontextmanager
@@ -36,15 +40,15 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Configure CORS
+    # Configure CORS - allow all origins for local dev and frontend integrations
     origins = settings.CORS_ORIGINS
     if isinstance(origins, str):
         origins = [origins]
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins,
-        allow_credentials=True,
+        allow_origins=origins if origins != ["*"] else ["*"],
+        allow_credentials=True if origins != ["*"] else False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -59,12 +63,37 @@ def create_app() -> FastAPI:
     app.include_router(demo_router)
     app.include_router(live_router)
 
+    # Serve static frontend assets if Frontend directory exists
+    if frontend_dir.exists():
+        style_path = frontend_dir / "style.css"
+        script_path = frontend_dir / "script.js"
+        index_path = frontend_dir / "index.html"
+
+        if style_path.exists():
+            @app.get("/style.css", include_in_schema=False)
+            def get_style():
+                return FileResponse(style_path, media_type="text/css")
+
+        if script_path.exists():
+            @app.get("/script.js", include_in_schema=False)
+            def get_script():
+                return FileResponse(script_path, media_type="application/javascript")
+
+        if index_path.exists():
+            @app.get("/app", include_in_schema=False)
+            def get_app():
+                return FileResponse(index_path, media_type="text/html")
+
     @app.get("/health", tags=["Health"])
     def health_check():
         return {"status": "ok", "app": "Story Wave", "version": "1.0.0"}
 
     @app.get("/", tags=["Health"])
-    def root():
+    def root(request: Request):
+        accept = request.headers.get("accept", "")
+        index_file = frontend_dir / "index.html"
+        if "text/html" in accept and index_file.exists():
+            return FileResponse(index_file, media_type="text/html")
         return {
             "name": "Story Wave API",
             "docs": "/docs",
