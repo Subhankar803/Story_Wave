@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class GenerateRequest(BaseModel):
-    type: Literal["scene", "dialogue", "branches"] = "scene"
+    type: Literal["scene", "dialogue", "branches", "next_scene"] = "scene"
     direction: str | None = Field(default=None, description="Prompt/direction of what happens next")
     character: str | None = Field(default=None, description="Character name for dialogue generation")
     situation: str | None = Field(default=None, description="Situation context for dialogue")
@@ -17,6 +17,11 @@ class GenerateRequest(BaseModel):
 class BranchOut(BaseModel):
     title: str
     scene: str
+    rating: str = "9.0"
+    consistency: str = "95%"
+    is_conflict: bool = False
+    why: str = "Consistent with Story Bible"
+    badge: str = "🟢 Highly Recommended"
 
 
 class DialogueOptionOut(BaseModel):
@@ -42,4 +47,26 @@ class TTSRequest(BaseModel):
 
 class TTSResponse(BaseModel):
     audio_path: str
+    audio_url: str | None = None
     message: str
+
+
+class VoiceTranscribeResponse(BaseModel):
+    transcript: str
+
+
+class VoiceAnalysisResponse(BaseModel):
+    transcript: str
+    primary_emotion: str
+    secondary_emotion: str
+    intensity: int
+    valence: str
+    energy: str
+    delivery_cues: str
+    words_vs_tone_mismatch: bool
+    mismatch_note: str
+    summary: str
+    delivery_rating: float = 8.5
+    tone_rating: float = 8.8
+    clarity_rating: float = 9.0
+    overall_rating: float = 8.8

@@ -18,6 +18,11 @@ FLAG_TYPE_MAPPING = {
     "broken world rule": "broken world rule",
     "knowledge": "knowledge a character should not have",
     "knowledge a character should not have": "knowledge a character should not have",
+    "character rule": "broken character rule",
+    "broken character rule": "broken character rule",
+    "conspiracy": "conspiracy / plot twist",
+    "plot twist": "conspiracy / plot twist",
+    "twist": "conspiracy / plot twist",
 }
 
 
@@ -71,7 +76,7 @@ class ConsistencyChecker:
                 old_quote=c.old_quote,
                 new_quote=c.new_quote,
                 chapter_number=chapter_number,
-                severity="error" if norm_type in ("broken world rule", "location/time conflict") else "warning",
+                severity="error" if norm_type in ("broken world rule", "location/time conflict", "broken character rule") else ("info" if "twist" in norm_type or "conspiracy" in norm_type else "warning"),
                 status="open",
             )
             self.db.add(flag)

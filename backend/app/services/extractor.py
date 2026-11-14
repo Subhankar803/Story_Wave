@@ -87,25 +87,40 @@ class ChapterExtractor:
             clean_name = rf.entity.strip()
             name_lower = clean_name.lower()
 
-            entity = existing_entities.get(name_lower)
-            if not entity and clean_name:
-                etype = infer_entity_type(rf.attribute, rf.value, clean_name)
-                entity = Entity(story_id=story_id, name=clean_name, type=etype)
-                self.db.add(entity)
-                self.db.flush()
-                existing_entities[name_lower] = entity
-                entities_created.append(entity)
+            entity = None
+            if clean_name and name_lower not in ("narrator", "world", "story", "unknown"):
+                entity = existing_entities.get(name_lower)
+                if not entity:
+                    etype = infer_entity_type(rf.attribute, rf.value, clean_name)
+                    entity = Entity(story_id=story_id, name=clean_name, type=etype)
+                    self.db.add(entity)
+                    self.db.flush()
+                    existing_entities[name_lower] = entity
+                    entities_created.append(entity)
 
             # Also register referenced locations as place entities
             if rf.attribute.lower() in ("location", "place") and rf.value:
                 val_clean = rf.value.strip()
                 val_lower = val_clean.lower()
-                if val_clean and val_lower not in existing_entities:
+                if val_clean and val_lower not in existing_entities and val_lower not in ("narrator", "world", "story"):
                     place_entity = Entity(story_id=story_id, name=val_clean, type="place")
                     self.db.add(place_entity)
                     self.db.flush()
                     existing_entities[val_lower] = place_entity
                     entities_created.append(place_entity)
+
+            # Also register relationship target characters as character entities
+            if rf.attribute.lower() == "relationship" and rf.value:
+                words = rf.value.split()
+                if words:
+                    target_name = words[-1].strip().capitalize()
+                    target_low = target_name.lower()
+                    if target_name.isalpha() and target_low not in existing_entities and target_low not in ("him", "her", "them", "anyone", "someone", "no"):
+                        char_entity = Entity(story_id=story_id, name=target_name, type="character")
+                        self.db.add(char_entity)
+                        self.db.flush()
+                        existing_entities[target_low] = char_entity
+                        entities_created.append(char_entity)
 
             # Generate embedding vector
             embedding_vec = simple_text_embedding(f"{rf.entity} {rf.attribute} {rf.value} {rf.quote}")

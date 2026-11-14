@@ -22,6 +22,14 @@ class FactOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class RuleCreate(BaseModel):
+    description: str
+    entity_name: str | None = None
+    character_name: str | None = None
+    quote: str | None = None
+    chapter_number: int = 1
+
+
 class RuleOut(BaseModel):
     id: int
     description: str

@@ -36,6 +36,9 @@ from pydantic import BaseModel
 # Tried in order. If one is overloaded (503) or retired (404) the next is used.
 # Gemini model names change often: edit this list from https://aistudio.google.com
 MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
     "gemini-3.5-flash",
@@ -64,7 +67,7 @@ def _get_client():
     return _client
 
 
-def call_llm(contents) -> str:
+def call_llm(contents, temperature: float = 0.0) -> str:
     """Send a prompt (str, or a list with audio parts), return JSON text. Falls back across models."""
     client = _get_client()
     for _ in range(4):
@@ -75,7 +78,7 @@ def call_llm(contents) -> str:
                 r = client.models.generate_content(
                     model=model,
                     contents=contents,
-                    config={"response_mime_type": "application/json", "temperature": 0},
+                    config={"response_mime_type": "application/json", "temperature": temperature},
                 )
                 return r.text
             except Exception as e:  # noqa: BLE001
@@ -310,11 +313,11 @@ def generate_branches(bible: list[Fact], direction: str, emotion: str, intensity
         "Include dialogue in double quotes, with who is speaking. "
         f"What happens next: {direction}\n"
         f"Target emotion: {emotion}, intensity {intensity}/10. The underlying feeling may differ from what "
-        "characters say aloud. Give each branch a short title." + extra
+        f"characters say aloud. Give each branch a short title (Variation seed: {random.randint(1000, 999999)})." + extra
         + " Return ONLY JSON matching: " + json.dumps(Branches.model_json_schema())
         + "\n\nBIBLE:\n" + _bible_json(bible)
     )
-    return Branches.model_validate_json(call_llm(prompt)).branches[:3]
+    return Branches.model_validate_json(call_llm(prompt, temperature=0.75)).branches[:3]
 
 
 def evaluate_branch(branch: Branch, bible: list[Fact], chapter: int) -> BranchResult:
@@ -348,12 +351,12 @@ def write_dialogue(bible: list[Fact], character: str, situation: str, emotion: s
         f"in this situation: {situation}\n"
         f"Target underlying emotion: {emotion}, intensity {intensity}/10. The line may hide the real feeling "
         "(subtext). Keep it true to who the character is (age, background, how they spoke before) and consistent "
-        "with every fact in the bible. For each option give the line, the underlying emotion, intensity 1-10, and "
+        f"with every fact in the bible. Ensure fresh, diverse dialogue lines (Seed: {random.randint(1000, 999999)}). For each option give the line, the underlying emotion, intensity 1-10, and "
         "one sentence on why it fits the character's voice. Return ONLY JSON matching: "
         + json.dumps(DialogueOptions.model_json_schema())
         + "\n\nBIBLE:\n" + _bible_json(bible)
     )
-    return DialogueOptions.model_validate_json(call_llm(prompt)).options
+    return DialogueOptions.model_validate_json(call_llm(prompt, temperature=0.8)).options
 
 
 # --------------------------------------------------------------------------

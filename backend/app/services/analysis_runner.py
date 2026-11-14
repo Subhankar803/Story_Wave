@@ -47,12 +47,45 @@ class AnalysisRunner:
             chapter.error_message = None
             self.db.flush()
 
-            # Retrieve prior facts from previous chapters for consistency checking
+            # Retrieve prior facts from previous chapters and all established rules for consistency checking
             prior_facts_stmt = (
                 select(Fact)
-                .where(Fact.story_id == story_id, Fact.chapter_number < chapter.number)
+                .where(
+                    Fact.story_id == story_id,
+                    (Fact.chapter_number < chapter.number) | (Fact.attribute == "rule") | (Fact.chapter_id == None),
+                )
             )
-            prior_facts = self.db.scalars(prior_facts_stmt).all()
+            prior_facts = list(self.db.scalars(prior_facts_stmt).all())
+
+            # Ensure every rule from the Rule table is included as a fact for consistency checking
+            all_rules = self.db.scalars(select(Rule).where(Rule.story_id == story_id)).all()
+            existing_rule_descs = set()
+            for f in prior_facts:
+                if f.value:
+                    existing_rule_descs.add(f.value.strip().lower())
+                if f.quote:
+                    existing_rule_descs.add(f.quote.strip().lower())
+            for r in all_rules:
+                r_desc = (r.description or "").strip()
+                ent = "World"
+                val = r_desc
+                if ":" in r_desc:
+                    parts = r_desc.split(":", 1)
+                    ent = parts[0].strip()
+                    val = parts[1].strip()
+                if val.lower() not in existing_rule_descs and r_desc.lower() not in existing_rule_descs:
+                    existing_rule_descs.add(val.lower())
+                    existing_rule_descs.add(r_desc.lower())
+                    prior_facts.append(
+                        Fact(
+                            story_id=story_id,
+                            entity_name=ent,
+                            attribute="rule",
+                            value=val,
+                            quote=r.quote or f"Rule established by author: {r_desc}",
+                            chapter_number=r.chapter_number or 1,
+                        )
+                    )
 
             # 1. Consistency check against existing story bible
             detected_flags = self.checker.check_new_text(

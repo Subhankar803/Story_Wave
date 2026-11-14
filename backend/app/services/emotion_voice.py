@@ -19,9 +19,13 @@ class EmotionVoiceService:
             bible = model_adapter.db_facts_to_model_bible(list(facts))
         return model_adapter.analyze_emotion(bible, text, chapter_number)
 
-    def analyze_audio_voice(self, audio_file_path: str):
+    def analyze_audio_voice(self, audio_file_path: str, dialogue_text: str | None = None):
         """Perform tone and emotional analysis on an audio clip."""
-        return model_adapter.sb.analyze_voice(audio_file_path)
+        return model_adapter.analyze_voice(audio_file_path, dialogue_text=dialogue_text)
+
+    def transcribe_audio_voice(self, audio_file_path: str, context: str | None = None) -> str:
+        """Transcribe human voice audio clip into dialogue text."""
+        return model_adapter.transcribe_voice(audio_file_path, context=context)
 
     def synthesize_speech(
         self,
