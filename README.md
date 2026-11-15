@@ -1,6 +1,7 @@
 <div align="center">
 
 # Story Wave
+<h4>By Team Zig Zag<h4>
 
 ### An AI co-writer that remembers your whole story, catches contradictions, and audits its own suggestions.
 
@@ -46,6 +47,11 @@ Generic AI writing tools make this worse. They write fluent text but have no mem
 
 Story Wave keeps a structured memory of the story, called the **story bible**, and uses it to check and to write.
 
+**Login & Trial**
+- Gives User a Login page in which they will able to create account and login to their progress.
+- Gives a trial Option for every user without login or creating account.
+- In trial they will able to use some exclusive features. 
+
 **Story bible**
 - Extracts characters, places, timeline events and world rules from pasted chapters into validated JSON.
 - Every fact keeps the verbatim quote it came from, so every claim is traceable.
@@ -58,11 +64,16 @@ Story Wave keeps a structured memory of the story, called the **story bible**, a
 - Writes three branching versions of the next scene and three in-voice dialogue options for any character.
 - **Audits its own writing:** every generated scene passes through the same consistency checker and an emotion analyzer before the author sees it.
 - Authors pick a branch and it is committed to the bible; a story can be forked into a separate universe.
+- Authors can see the story universe through the GRAPH feature i.e, the graph loads the whole realtionship , timeline as a whole Overview.
 
 **Emotion and voice**
 - Scores each line of dialogue for surface versus hidden emotion, intensity and subtext, and checks that the line fits the character.
 - Analyses a recorded human voice (how it is said, not only the words) and flags when tone contradicts words.
 - Speaks a line back with a chosen emotion and intensity.
+- Background Sounds with the nature of dialogues with voice selection
+
+**Export Options**
+- Users will be able to save their work in a Word format when they will export through our application.
 
 **Platform**
 - REST API with JWT authentication and per-user data isolation, plus WebSocket live updates.
@@ -912,6 +923,8 @@ Full, always up-to-date reference with request and response schemas: **`/docs`**
 - Backend product requirements document
 - Frontend product requirements document
 - "How it works" overview
+
+Keep these in a `docs/` folder and link them here.
 
 ## Team
 
