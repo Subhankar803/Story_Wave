@@ -1,7 +1,6 @@
 <div align="center">
 
 # Story Wave
-<h4>By Team Zig Zag<h4>
 
 ### An AI co-writer that remembers your whole story, catches contradictions, and audits its own suggestions.
 
@@ -22,6 +21,7 @@
 - [The problem](#the-problem)
 - [What Story Wave does](#what-story-wave-does)
 - [How it works](#how-it-works)
+- [Architecture](#architecture)
 - [Try the demo](#try-the-demo)
 - [Tech stack](#tech-stack)
 - [Project structure](#project-structure)
@@ -46,11 +46,6 @@ Generic AI writing tools make this worse. They write fluent text but have no mem
 
 Story Wave keeps a structured memory of the story, called the **story bible**, and uses it to check and to write.
 
-**Login & Trial**
-- Gives User a Login page in which they will able to create account and login to their progress.
-- Gives a trial Option for every user without login or creating account.
-- In trial they will able to use some exclusive features. 
-
 **Story bible**
 - Extracts characters, places, timeline events and world rules from pasted chapters into validated JSON.
 - Every fact keeps the verbatim quote it came from, so every claim is traceable.
@@ -63,16 +58,11 @@ Story Wave keeps a structured memory of the story, called the **story bible**, a
 - Writes three branching versions of the next scene and three in-voice dialogue options for any character.
 - **Audits its own writing:** every generated scene passes through the same consistency checker and an emotion analyzer before the author sees it.
 - Authors pick a branch and it is committed to the bible; a story can be forked into a separate universe.
-- Authors can see the story universe through the GRAPH feature i.e, the graph loads the whole realtionship , timeline as a whole Overview.
 
 **Emotion and voice**
 - Scores each line of dialogue for surface versus hidden emotion, intensity and subtext, and checks that the line fits the character.
 - Analyses a recorded human voice (how it is said, not only the words) and flags when tone contradicts words.
 - Speaks a line back with a chosen emotion and intensity.
-- Background Sounds with the nature of dialogues with voice selection
-
-**Export Options**
-- Users will be able to save their work in a Word format when they will export through our application.
 
 **Platform**
 - REST API with JWT authentication and per-user data isolation, plus WebSocket live updates.
@@ -114,6 +104,190 @@ flowchart LR
 **5. Commit.** The chosen branch is added to the bible, so the next chapter is checked against it.
 
 Every model call goes through a single `model_adapter`, which keeps provider details out of the rest of the code.
+
+## Architecture
+
+Story Wave is a layered application: a thin browser client, one FastAPI service that exposes REST and WebSocket endpoints, a service layer with one module per pipeline stage, and a data layer. All calls to the language model go through a single adapter, so the AI provider is isolated from the rest of the code.
+
+### System overview
+
+```mermaid
+flowchart TB
+    subgraph CLIENT["Client (browser)"]
+        UI["Frontend<br/>index.html, script.js, style.css"]
+    end
+
+    subgraph API["API layer: FastAPI (app/main.py)"]
+        MW["Authentication (JWT), rate limiting, CORS<br/>api/deps.py and core/"]
+        RT["Routers: auth, stories, chapters, bible,<br/>flags, generate, live, demo, voice"]
+    end
+
+    subgraph SVC["Service layer (app/services)"]
+        AR["analysis_runner"]
+        EX["extractor"]
+        RV["retriever"]
+        CK["checker"]
+        GN["generator"]
+        EV["emotion_voice"]
+        LM["live_manager"]
+        MA["model_adapter"]
+    end
+
+    subgraph DATA["Data layer"]
+        ORM["SQLAlchemy models<br/>Alembic migrations"]
+        DB[("SQLite for development<br/>PostgreSQL 16 + pgvector in Docker")]
+    end
+
+    GEM["Google Gemini API"]
+    TTS["edge-tts voices"]
+
+    UI -->|REST and WebSocket| MW
+    MW --> RT
+    RT --> AR
+    RT --> GN
+    RT --> EV
+    RT --> LM
+    AR --> EX
+    AR --> RV
+    AR --> CK
+    EX --> MA
+    CK --> MA
+    GN --> MA
+    EV --> MA
+    MA --> GEM
+    EV --> TTS
+    EX --> ORM
+    RV --> ORM
+    CK --> ORM
+    ORM --> DB
+    LM -.->|live updates| UI
+```
+
+### Layers and responsibilities
+
+| Layer | Location | Responsibility |
+|---|---|---|
+| Client | `Frontend/` | Editor, live story bible, flags and generation tools. Calls the REST API and listens on a WebSocket. Served by the backend itself |
+| API | `app/main.py`, `app/api/routes/`, `app/api/deps.py` | HTTP and WebSocket endpoints, request validation with Pydantic schemas, authentication and per-user access. Contains no AI logic |
+| Core | `app/core/` | Environment-based settings, structured logging, password hashing and JWT, rate limiting |
+| Services | `app/services/` | The AI pipeline, one module per stage: `extractor`, `retriever`, `checker`, `generator`, `emotion_voice`, orchestrated by `analysis_runner`, with `live_manager` pushing updates to clients |
+| Model gateway | `app/services/model_adapter.py` | The only place that talks to Gemini (text generation and embeddings) |
+| Data | `app/models/`, `app/db/`, `alembic/` | ORM models, database sessions and migrations |
+| External | Gemini API, edge-tts | Language model and speech synthesis |
+
+### Request flow: analysing a chapter
+
+```mermaid
+sequenceDiagram
+    actor Author
+    participant UI as Frontend
+    participant API as FastAPI
+    participant Run as analysis_runner
+    participant AI as Gemini (via model_adapter)
+    participant DB as Database
+    participant WS as live_manager
+
+    Author->>UI: Paste chapter, click Analyze
+    UI->>API: Submit chapter (JWT)
+    API->>DB: Save chapter
+    API->>Run: Start analysis
+    Run->>AI: extractor: prompt and schema
+    AI-->>Run: Facts as JSON
+    Run->>DB: Store facts and quotes
+    Run->>DB: retriever: related facts
+    DB-->>Run: Existing facts
+    Run->>AI: checker: confirm conflicts
+    AI-->>Run: Contradictions and quotes
+    Run->>DB: Save flags
+    Run->>WS: Publish updates
+    WS-->>UI: Live update (WebSocket)
+    UI-->>Author: Bible and flags updated
+```
+
+### Request flow: generating and auditing a scene
+
+```mermaid
+flowchart LR
+    A["Author: direction, mode,<br/>emotion"] --> B["Generate endpoint"]
+    B --> C["retriever:<br/>relevant bible facts"]
+    C --> D["generator:<br/>prompt built from facts"]
+    D --> E["model_adapter<br/>(Gemini)"]
+    E --> F["Branches or dialogue"]
+    F --> G["checker:<br/>continuity audit"]
+    F --> H["emotion_voice:<br/>emotion and voice fit"]
+    G --> I["Author sees the text<br/>with audit results"]
+    H --> I
+    I -->|picks a branch| J["Facts committed<br/>to the story bible"]
+```
+
+### Data model
+
+```mermaid
+erDiagram
+    USER ||--o{ STORY : owns
+    STORY ||--o{ CHAPTER : contains
+    STORY ||--o{ ENTITY : tracks
+    ENTITY ||--o{ FACT : has
+    CHAPTER ||--o{ FACT : "is source of"
+    CHAPTER ||--o{ RULE : "is source of"
+    STORY ||--o{ FLAG : has
+    FACT ||--o{ FLAG : "conflicts in"
+
+    USER {
+        int id PK
+        string email
+    }
+    STORY {
+        int id PK
+        int user_id FK
+        string title
+    }
+    CHAPTER {
+        int id PK
+        int story_id FK
+        int number
+        string status
+    }
+    ENTITY {
+        int id PK
+        int story_id FK
+        string name
+        string type
+    }
+    FACT {
+        int id PK
+        int entity_id FK
+        int chapter_id FK
+        string attribute
+        string value
+        string quote
+    }
+    RULE {
+        int id PK
+        int chapter_id FK
+        string description
+        string quote
+    }
+    FLAG {
+        int id PK
+        int fact_id FK
+        int conflicting_fact_id FK
+        string type
+        string status
+    }
+```
+
+### Design decisions
+
+- **One gateway to the model.** Only `model_adapter` calls Gemini, so models, retries and fallbacks are handled in one place and the rest of the code never touches the SDK.
+- **Validated AI output.** Model replies are parsed into Pydantic schemas before anything is stored, so malformed output cannot corrupt the story bible.
+- **Retrieve before checking.** The checker compares new facts only with the existing facts that matter for the same entity, which keeps prompts small and cheap.
+- **Every fact carries its source quote.** Each flag can show both conflicting passages, so results are traceable and the author can verify them.
+- **Audited generation.** Generated scenes pass through the same checker and an emotion analyzer before the author sees them.
+- **Per-user isolation.** Stories belong to a user, and access is limited to the owner. Isolation is covered by tests in `tests/api/test_isolation.py`.
+- **Same models, two databases.** SQLite gives zero-setup development, and PostgreSQL with pgvector is used in Docker. `DATABASE_URL` switches between them.
+- **Live updates.** Results arrive over a WebSocket, so the bible and flags update without reloading the page.
+- **Single origin.** The backend serves the frontend, so the default setup needs no separate web server and no CORS configuration.
 
 ## Try the demo
 
@@ -738,8 +912,6 @@ Full, always up-to-date reference with request and response schemas: **`/docs`**
 - Backend product requirements document
 - Frontend product requirements document
 - "How it works" overview
-
-Keep these in a `docs/` folder and link them here.
 
 ## Team
 
