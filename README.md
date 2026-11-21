@@ -40,7 +40,6 @@
 ## The problem
 
 Authors of long stories, series and shared universes lose track of small facts: a character's eye colour, where they were on a given day, a rule of the world. A character is in Delhi on Monday morning and on a beach in Mumbai that evening. A spirit that can never cross running water drifts over a river. These continuity errors are tedious to find by hand, they erode reader trust, and they often surface only after publication.
-
 Generic AI writing tools make this worse. They write fluent text but have no memory of what has been established, so they introduce new contradictions of their own.
 
 ## What Story Wave does
@@ -48,6 +47,7 @@ Generic AI writing tools make this worse. They write fluent text but have no mem
 Story Wave keeps a structured memory of the story, called the **story bible**, and uses it to check and to write.
 
 **Login & Trial**
+
 - Gives User a Login page in which they will able to create account and login to their progress.
 - Gives a trial Option for every user without login or creating account.
 - In trial they will able to use some exclusive features. 
