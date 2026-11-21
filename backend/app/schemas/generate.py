@@ -8,6 +8,7 @@ class GenerateRequest(BaseModel):
     direction: str | None = Field(default=None, description="Prompt/direction of what happens next")
     character: str | None = Field(default=None, description="Character name for dialogue generation")
     situation: str | None = Field(default=None, description="Situation context for dialogue")
+    canvas_context: str | None = Field(default=None, description="Current story text from canvas")
     emotion: str = Field(default="calm", description="Target emotional tone")
     intensity: int = Field(default=5, ge=1, le=10, description="Emotion intensity from 1 to 10")
     sabotage: bool = Field(default=False, description="DEMO ONLY: intentionally plant contradiction")

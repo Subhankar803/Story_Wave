@@ -17,8 +17,12 @@ def infer_entity_type(attribute: str, value: str, entity_name: str) -> str:
     name_low = entity_name.lower().strip()
     attr_low = attribute.lower().strip()
 
+    # Explicit place attribute
+    if attr_low == "place":
+        return "place"
+
     # Known place patterns in entity name
-    place_keywords = ("delhi", "mumbai", "forest", "kingdom", "citadel", "castle", "fortress", "city", "river", "bridge", "beach")
+    place_keywords = ("delhi", "mumbai", "kolkata", "kanchrapara", "forest", "kingdom", "citadel", "castle", "fortress", "city", "river", "bridge", "beach")
     if any(k in name_low for k in place_keywords):
         return "place"
 
@@ -90,24 +94,32 @@ class ChapterExtractor:
             entity = None
             if clean_name and name_lower not in ("narrator", "world", "story", "unknown"):
                 entity = existing_entities.get(name_lower)
+                etype = infer_entity_type(rf.attribute, rf.value, clean_name)
                 if not entity:
-                    etype = infer_entity_type(rf.attribute, rf.value, clean_name)
                     entity = Entity(story_id=story_id, name=clean_name, type=etype)
                     self.db.add(entity)
                     self.db.flush()
                     existing_entities[name_lower] = entity
                     entities_created.append(entity)
+                elif entity.type != etype and etype == "place":
+                    entity.type = "place"
+                    self.db.flush()
 
             # Also register referenced locations as place entities
             if rf.attribute.lower() in ("location", "place") and rf.value:
                 val_clean = rf.value.strip()
                 val_lower = val_clean.lower()
-                if val_clean and val_lower not in existing_entities and val_lower not in ("narrator", "world", "story"):
-                    place_entity = Entity(story_id=story_id, name=val_clean, type="place")
-                    self.db.add(place_entity)
-                    self.db.flush()
-                    existing_entities[val_lower] = place_entity
-                    entities_created.append(place_entity)
+                if val_clean and val_lower not in ("narrator", "world", "story"):
+                    if val_lower in existing_entities:
+                        if existing_entities[val_lower].type != "place":
+                            existing_entities[val_lower].type = "place"
+                            self.db.flush()
+                    else:
+                        place_entity = Entity(story_id=story_id, name=val_clean, type="place")
+                        self.db.add(place_entity)
+                        self.db.flush()
+                        existing_entities[val_lower] = place_entity
+                        entities_created.append(place_entity)
 
             # Also register relationship target characters as character entities
             if rf.attribute.lower() == "relationship" and rf.value:

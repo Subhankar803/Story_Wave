@@ -36,6 +36,23 @@ async def lifespan(app: FastAPI):
     # Auto-create tables for SQLite development / test mode
     logger.info("Initializing Story Wave database schema...")
     Base.metadata.create_all(bind=engine)
+    try:
+        from app.models.user import User
+        from app.core.security import get_password_hash
+        from app.db.session import SessionLocal
+        from sqlalchemy import select
+        with SessionLocal() as db:
+            if not db.scalar(select(User).where(User.email == "writer@storywave.ai")):
+                demo_user = User(
+                    email="writer@storywave.ai",
+                    password_hash=get_password_hash("password123"),
+                )
+                db.add(demo_user)
+                db.commit()
+                logger.info("Default author user seeded into SQLite users table.")
+    except Exception as e:
+        logger.warning(f"Could not seed default user: {e}")
+
     logger.info("Story Wave backend started successfully.")
     yield
     logger.info("Shutting down Story Wave backend...")
@@ -76,34 +93,44 @@ def create_app() -> FastAPI:
 
     # Serve static frontend assets if Frontend directory exists
     if frontend_dir.exists():
-        style_path = frontend_dir / "style.css"
-        script_path = frontend_dir / "script.js"
-        index_path = frontend_dir / "index.html"
-
         no_cache_headers = {
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Pragma": "no-cache",
             "Expires": "0",
         }
 
-        if style_path.exists():
-            @app.get("/style.css", include_in_schema=False)
-            def get_style():
-                return FileResponse(style_path, media_type="text/css", headers=no_cache_headers)
+        # Static files serving helper
+        frontend_files = [
+            "style.css", "script.js", "index.html",
+            "overview.html", "overview.css", "overview.js",
+            "login.html", "login.css", "login.js",
+            "register.html", "register.css", "register.js",
+            "404.html", "favicon.svg"
+        ]
 
-        if script_path.exists():
-            @app.get("/script.js", include_in_schema=False)
-            def get_script():
-                return FileResponse(script_path, media_type="application/javascript", headers=no_cache_headers)
+        def _serve_file(file_path: Path, media_type: str):
+            return lambda: FileResponse(file_path, media_type=media_type, headers=no_cache_headers)
 
-        if index_path.exists():
-            @app.get("/app", include_in_schema=False)
-            def get_app():
-                return FileResponse(index_path, media_type="text/html", headers=no_cache_headers)
+        for filename in frontend_files:
+            target_path = frontend_dir / filename
+            if target_path.exists():
+                media_type = "text/html" if filename.endswith(".html") else (
+                    "text/css" if filename.endswith(".css") else (
+                        "application/javascript" if filename.endswith(".js") else (
+                            "image/svg+xml" if filename.endswith(".svg") else "application/octet-stream"
+                        )
+                    )
+                )
+                app.add_api_route(
+                    f"/{filename}",
+                    _serve_file(target_path, media_type),
+                    methods=["GET"],
+                    include_in_schema=False,
+                )
 
-            @app.get("/index.html", include_in_schema=False)
-            def get_index():
-                return FileResponse(index_path, media_type="text/html", headers=no_cache_headers)
+        @app.get("/app", include_in_schema=False)
+        def get_app():
+            return FileResponse(frontend_dir / "index.html", media_type="text/html", headers=no_cache_headers)
 
     @app.get("/audio/{filename}", include_in_schema=False)
     def get_audio(filename: str):
@@ -118,7 +145,6 @@ def create_app() -> FastAPI:
 
     @app.get("/", tags=["Health"])
     def root(request: Request):
-        index_file = frontend_dir / "index.html"
         accept = request.headers.get("accept", "")
         if "application/json" in accept and "text/html" not in accept:
             return {
@@ -127,9 +153,12 @@ def create_app() -> FastAPI:
                 "version": "1.0.0",
                 "description": "GenAI narrative co-writer and story bible continuity assistant",
             }
-        if index_file.exists():
+        overview_file = frontend_dir / "overview.html"
+        index_file = frontend_dir / "index.html"
+        home_target = overview_file if overview_file.exists() else index_file
+        if home_target.exists():
             return FileResponse(
-                index_file,
+                home_target,
                 media_type="text/html",
                 headers={
                     "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -143,6 +172,16 @@ def create_app() -> FastAPI:
             "version": "1.0.0",
             "description": "GenAI narrative co-writer and story bible continuity assistant",
         }
+
+    # 404 handler: serve 404.html for browser navigation requests
+    @app.exception_handler(404)
+    async def not_found_handler(request: Request, exc):
+        accept = request.headers.get("accept", "")
+        file_404 = frontend_dir / "404.html"
+        if "text/html" in accept and file_404.exists():
+            return FileResponse(file_404, status_code=404, media_type="text/html")
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
 
     return app
 

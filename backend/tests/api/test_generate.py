@@ -49,3 +49,42 @@ def test_generate_branches_and_dialogue(client: TestClient, auth_headers: dict[s
     assert scene_res.json()["type"] == "scene"
     assert scene_res.json()["content"]
 
+
+def test_generate_with_canvas_context(client: TestClient, auth_headers: dict[str, str], test_story: Story):
+    # Test generation grounded in canvas context even without pre-existing chapter facts
+    canvas_text = "Subhankar stood before the glowing terminal in Kolkata, preparing his next algorithm."
+    branch_res = client.post(
+        f"/stories/{test_story.id}/generate",
+        json={
+            "type": "branches",
+            "direction": "Subhankar decides whether to deploy the model",
+            "canvas_context": canvas_text,
+            "emotion": "defiance",
+            "intensity": 8,
+        },
+        headers=auth_headers,
+    )
+    assert branch_res.status_code == 200
+    b_data = branch_res.json()
+    assert len(b_data["branches"]) == 3
+    # Check that branches incorporate character from canvas
+    scenes_text = " ".join(b["scene"] for b in b_data["branches"])
+    assert "Subhankar" in scenes_text
+
+    # Test dialogue with canvas context
+    diag_res = client.post(
+        f"/stories/{test_story.id}/generate",
+        json={
+            "type": "dialogue",
+            "character": "Subhankar",
+            "situation": "Deploying the model against warnings",
+            "canvas_context": canvas_text,
+            "emotion": "defiance",
+            "intensity": 8,
+        },
+        headers=auth_headers,
+    )
+    assert diag_res.status_code == 200
+    d_data = diag_res.json()
+    assert len(d_data["dialogue_options"]) == 3
+

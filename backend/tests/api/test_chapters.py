@@ -60,6 +60,32 @@ def test_edit_chapter(client: TestClient, auth_headers: dict[str, str], test_sto
     assert "silver pocket watch" in edit_data["chapter"]["text"]
 
 
+def test_delete_chapter(client: TestClient, auth_headers: dict[str, str], test_story: Story):
+    # Submit chapter 1 & chapter 2
+    client.post(
+        f"/stories/{test_story.id}/chapters",
+        json={"number": 1, "text": "Chapter one content in Delhi."},
+        headers=auth_headers,
+    )
+    client.post(
+        f"/stories/{test_story.id}/chapters",
+        json={"number": 2, "text": "Chapter two content in Mumbai."},
+        headers=auth_headers,
+    )
+
+    # Delete chapter 1
+    del_res = client.delete(
+        f"/stories/{test_story.id}/chapters/1",
+        headers=auth_headers,
+    )
+    assert del_res.status_code == 200
+    assert del_res.json()["remaining_count"] == 1
+
+    # Chapter 2 should now be re-sequenced to Chapter 1
+    bible_res = client.get(f"/stories/{test_story.id}/bible", headers=auth_headers)
+    assert bible_res.status_code == 200
+
+
 def test_websocket_live_connection(client: TestClient, test_story: Story):
     with client.websocket_connect(f"/stories/{test_story.id}/live") as websocket:
         websocket.send_text("ping")

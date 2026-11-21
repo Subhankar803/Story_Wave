@@ -199,6 +199,72 @@ main > section:first-child > div:first-child {
   border: 1px solid var(--accent-cyan-border) !important;
 }
 
+/* Chrome-style Google chapter tabs */
+.chapter-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+.chapter-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.6;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.chapter-tab:hover .chapter-tab-close {
+  opacity: 1;
+}
+
+.chapter-tab-close:hover {
+  background-color: rgba(244, 63, 94, 0.25);
+  color: #F43F5E !important;
+}
+
+/* Demo Story Modal Controls */
+.demo-preset-card {
+  border-color: var(--border-color);
+  background-color: var(--bg-surface-secondary);
+}
+
+.demo-preset-card:hover {
+  border-color: var(--accent-cyan);
+  background-color: var(--accent-cyan-soft);
+}
+
+.demo-preset-card.active {
+  border-color: var(--accent-cyan) !important;
+  background-color: var(--accent-cyan-soft) !important;
+  box-shadow: 0 0 0 1px var(--accent-cyan);
+}
+
+.demo-count-btn {
+  border-color: var(--border-color);
+  background-color: var(--bg-surface-secondary);
+  color: var(--text-secondary);
+}
+
+.demo-count-btn:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+.demo-count-btn.active {
+  border-color: var(--accent-cyan) !important;
+  background-color: var(--accent-cyan-soft) !important;
+  color: var(--accent-cyan) !important;
+}
+
 /* Active insight tab indicator */
 .active-insight-tab {
   border-bottom-color: var(--accent-cyan) !important;

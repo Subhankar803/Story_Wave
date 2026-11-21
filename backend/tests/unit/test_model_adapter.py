@@ -86,3 +86,19 @@ def test_generate_branches_and_dialogue():
     )
     assert len(dialogue) == 3
 
+
+def test_analyze_voice_joy_and_intensity():
+    text = "The show was really, really pretty much amazing. I am out of the spell."
+    report = model_adapter.analyze_voice("dummy.webm", dialogue_text=text)
+    assert report.primary_emotion == "Joy / Amazement"
+    assert report.intensity >= 9
+    assert report.valence == "positive"
+    assert report.energy == "high"
+
+
+def test_analyze_voice_show_does_not_trigger_how():
+    text = "The show began at eight o'clock."
+    report = model_adapter.analyze_voice("dummy.webm", dialogue_text=text)
+    assert report.primary_emotion != "Inquisitive / Suspicion"
+    assert report.primary_emotion == "Narrative Conviction"
+

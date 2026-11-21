@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <title>Create Your Account — Story Wave</title>
+  <meta name="description" content="Create your free Story Wave account to write fiction, track story continuity, and prevent plot holes across chapters." />
+  <meta name="theme-color" content="#081326" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <!-- Google Fonts Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <!-- Register Stylesheet -->
+  <link rel="stylesheet" href="register.css" />
+</head>
+<body>
+
+  <!-- Top bar with Back to Home and Theme Toggle -->
+  <header class="auth-top-bar">
+    <a href="overview.html" class="back-link" title="Return to Overview">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"></line>
+        <polyline points="12 19 5 12 12 5"></polyline>
+      </svg>
+      <span>Back to Home</span>
+    </a>
+
+    <!-- Theme Toggle Button -->
+    <button id="themeToggleBtn" class="theme-toggle-btn" aria-label="Toggle Theme" title="Toggle Theme">
+      <!-- Sun Icon -->
+      <svg id="themeSunIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="5"></circle>
+        <line x1="12" y1="1" x2="12" y2="3"></line>
+        <line x1="12" y1="21" x2="12" y2="23"></line>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+        <line x1="1" y1="12" x2="3" y2="12"></line>
+        <line x1="21" y1="12" x2="23" y2="12"></line>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+      </svg>
+      <!-- Moon Icon -->
+      <svg id="themeMoonIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+      </svg>
+    </button>
+  </header>
+
+  <!-- Centered Register Card -->
+  <main class="auth-wrapper">
+    <div class="auth-card">
+      <!-- Clickable Story Wave Logo -->
+      <a href="overview.html" class="auth-brand" aria-label="Story Wave Home">
+        <div class="brand-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path>
+            <line x1="16" y1="8" x2="2" y2="22"></line>
+            <line x1="17.5" y1="15" x2="9" y2="15"></line>
+          </svg>
+        </div>
+        <span class="brand-title">STORY WAVE</span>
+      </a>
+
+      <!-- Headings -->
+      <h1 class="auth-heading">Create Account</h1>
+      <p class="auth-subheading">Start building your story universe with Story Wave and writing contradiction-free fiction.</p>
+
+      <!-- Alert Notification -->
+      <div id="registerAlertBox" class="alert-box alert-danger" role="alert" aria-live="polite"></div>
+
+      <!-- Register Form -->
+      <form id="registerForm" novalidate>
+        <!-- Full Name -->
+        <div class="form-group">
+          <label for="fullNameInput" class="form-label">Full Name</label>
+          <div class="input-container">
+            <span class="input-icon">
+              <!-- User SVG -->
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+            </span>
+            <input type="text" id="fullNameInput" class="form-input" placeholder="Maya Sterling" autocomplete="name" required />
+          </div>
+        </div>
+
+        <!-- Email -->
+        <div class="form-group">
+          <label for="registerEmailInput" class="form-label">Email Address</label>
+          <div class="input-container">
+            <span class="input-icon">
+              <!-- Mail SVG -->
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                <polyline points="22,6 12,13 2,6"></polyline>
+              </svg>
+            </span>
+            <input type="email" id="registerEmailInput" class="form-input" placeholder="writer@storywave.ai" autocomplete="email" required />
+          </div>
+        </div>
+
+        <!-- Password -->
+        <div class="form-group">
+          <label for="registerPasswordInput" class="form-label">Password</label>
+          <div class="input-container">
+            <span class="input-icon">
+              <!-- Lock SVG -->
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+            </span>
+            <input type="password" id="registerPasswordInput" class="form-input" placeholder="At least 6 characters" autocomplete="new-password" required />
+            <button type="button" id="toggleRegisterPasswordBtn" class="password-toggle-btn" aria-label="Toggle password visibility" title="Show/Hide Password">
+              <svg id="regEyeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <svg id="regEyeOffIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Confirm Password -->
+        <div class="form-group">
+          <label for="confirmPasswordInput" class="form-label">Confirm Password</label>
+          <div class="input-container">
+            <span class="input-icon">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+            </span>
+            <input type="password" id="confirmPasswordInput" class="form-input" placeholder="Re-enter your password" autocomplete="new-password" required />
+            <button type="button" id="toggleConfirmPasswordBtn" class="password-toggle-btn" aria-label="Toggle confirm password visibility" title="Show/Hide Password">
+              <svg id="confirmEyeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <svg id="confirmEyeOffIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Submit Button -->
+        <button type="submit" id="registerSubmitBtn" class="btn-submit">
+          <span>Create Account</span>
+        </button>
+      </form>
+
+      <!-- Footer navigation inside card -->
+      <div class="auth-card-footer">
+        Already have an account? <a href="login.html">Log in here</a>
+      </div>
+
+      <!-- Clickable Support Contact Links -->
+      <div class="auth-contact-footer">
+        <a href="mailto:support@storywave.ai" class="auth-contact-link" title="Email Support">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+            <polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
+          <span>support@storywave.ai</span>
+        </a>
+        <span>•</span>
+        <a href="tel:+18005550199" class="auth-contact-link" title="Call Support">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+          </svg>
+          <span>+1 (800) 555-0199</span>
+        </a>
+      </div>
+
+      <div class="auth-copyright">
+        &copy; <span id="copyrightYear">2026</span> Story Wave. All rights reserved.
+      </div>
+    </div>
+  </main>
+
+  <!-- Connect Register Vanilla JavaScript -->
+  <script src="register.js?v=7.0"></script>
+</body>
+</html>

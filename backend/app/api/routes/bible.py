@@ -26,8 +26,52 @@ def get_story_bible(
     ).all()
     rules: Sequence[Rule] = db.scalars(select(Rule).where(Rule.story_id == story.id)).all()
 
-    characters = [EntityOut.model_validate(e) for e in entities if e.type == "character" and e.name.lower() not in ("narrator", "world", "story", "unknown", "truly")]
-    places = [EntityOut.model_validate(e) for e in entities if e.type == "place" and e.name.lower() not in ("narrator", "world", "story", "unknown", "truly")]
+    # Clean up non-entity or orphan Entity records
+    CALENDAR_NON_ENTITIES = {
+        "world", "narrator", "story", "unknown", "truly",
+        "christmas", "christmas day", "easter", "halloween", "thanksgiving", "new year",
+        "holiday", "holidays", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+        "today", "yesterday", "tomorrow", "laughter", "silence", "shadows", "candle", "darkness", "someone", "everyone"
+    }
+
+    # Delete any invalid entities or facts from DB
+    invalid_entities = [
+        e for e in entities
+        if e.name.strip().lower() in CALENDAR_NON_ENTITIES
+        or any(w in e.name.strip().lower().split() for w in ("christmas", "easter", "holiday", "yesterday", "tomorrow"))
+    ]
+    if invalid_entities:
+        for ie in invalid_entities:
+            db.delete(ie)
+        db.flush()
+        entities = [e for e in entities if e not in invalid_entities]
+
+    invalid_facts = [
+        f for f in facts
+        if f.entity_name and (
+            f.entity_name.strip().lower() in CALENDAR_NON_ENTITIES
+            or any(w in f.entity_name.strip().lower().split() for w in ("christmas", "easter", "holiday", "yesterday", "tomorrow"))
+        )
+    ]
+    if invalid_facts:
+        for ifact in invalid_facts:
+            db.delete(ifact)
+        db.flush()
+        facts = [f for f in facts if f not in invalid_facts]
+
+    # Clean up orphan Entity records so stale entities without facts do not linger in the bible
+    active_entity_names = {
+        f.entity_name.strip().lower() for f in facts if f.entity_name and f.entity_name.strip()
+    }
+    orphaned = [e for e in entities if e.name.strip().lower() not in active_entity_names]
+    if orphaned:
+        for oe in orphaned:
+            db.delete(oe)
+        db.flush()
+        entities = [e for e in entities if e.name.strip().lower() in active_entity_names]
+
+    characters = [EntityOut.model_validate(e) for e in entities if e.type == "character" and e.name.lower() not in CALENDAR_NON_ENTITIES]
+    places = [EntityOut.model_validate(e) for e in entities if e.type == "place" and e.name.lower() not in CALENDAR_NON_ENTITIES]
     objects = [EntityOut.model_validate(e) for e in entities if e.type == "object"]
     organizations = [EntityOut.model_validate(e) for e in entities if e.type == "organization"]
 

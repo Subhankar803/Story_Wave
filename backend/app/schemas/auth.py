@@ -11,6 +11,7 @@ class UserRegister(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+    otp: str | None = None
 
 
 class UserOut(BaseModel):

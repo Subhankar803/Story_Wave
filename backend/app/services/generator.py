@@ -32,9 +32,12 @@ class StoryGenerator:
         intensity: int = 5,
         sabotage: bool = False,
         chapter: int = 1,
+        canvas_context: str | None = None,
     ) -> list[BranchOut]:
         """Generate 2-3 branching scene options from grounded facts."""
         relevant_bible = self.get_grounding_facts(story_id, query_text=direction)
+        if not relevant_bible and (canvas_context or direction):
+            relevant_bible = model_adapter.extract(canvas_context or direction, chapter=chapter)
         audited = model_adapter.write_branches_audited(
             bible=relevant_bible,
             direction=direction,
@@ -42,6 +45,7 @@ class StoryGenerator:
             intensity=intensity,
             chapter=chapter,
             sabotage=sabotage,
+            canvas_context=canvas_context,
         )
         results = []
         for i, res in enumerate(audited):
@@ -89,15 +93,19 @@ class StoryGenerator:
         situation: str,
         emotion: str = "calm",
         intensity: int = 5,
+        canvas_context: str | None = None,
     ) -> list[DialogueOptionOut]:
         """Generate 3 in-voice dialogue options for a character in a specific situation."""
         relevant_bible = self.get_grounding_facts(story_id, query_text=situation, character=character)
+        if not relevant_bible and (canvas_context or situation):
+            relevant_bible = model_adapter.extract(canvas_context or situation, chapter=1)
         options = model_adapter.write_dialogue(
             bible=relevant_bible,
             character=character,
             situation=situation,
             emotion=emotion,
             intensity=intensity,
+            canvas_context=canvas_context,
         )
         return [
             DialogueOptionOut(

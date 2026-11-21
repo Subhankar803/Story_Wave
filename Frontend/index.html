@@ -19,17 +19,25 @@
     <!-- SECTION 1: MAIN HEADER -->
     <header class="app-surface border-b app-border px-6 py-3 flex items-center justify-between shrink-0 z-20">
       <div class="flex items-center gap-3">
-        <span class="text-xl p-1.5 rounded-lg bg-teal-500/10 border border-teal-500/20 text-teal-400">🪶</span>
-        <div class="flex items-center gap-2.5">
-          <span class="font-bold tracking-wider text-sm md:text-base app-text-primary">STORY WAVE</span>
-          <span id="backendStatusBadge" class="text-[11px] px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-400 border border-slate-500/20 font-medium flex items-center gap-1.5">
-            <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-            <span>Connecting...</span>
-          </span>
-        </div>
+        <a href="overview.html" class="flex items-center gap-2.5 group transition" title="Return to Story Wave Overview">
+          <span class="text-xl p-1.5 rounded-lg bg-teal-500/10 border border-teal-500/20 text-teal-400 group-hover:scale-105 transition-transform">🪶</span>
+          <span class="font-bold tracking-wider text-sm md:text-base app-text-primary group-hover:text-teal-400 transition-colors">STORY WAVE</span>
+        </a>
+        <span id="backendStatusBadge" class="text-[11px] px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-400 border border-slate-500/20 font-medium flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+          <span>Connecting...</span>
+        </span>
       </div>
 
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2.5 sm:gap-3">
+        <!-- Guest Trial / Active User Status Container -->
+        <div id="userAuthStatusContainer" class="flex items-center gap-2"></div>
+
+        <a href="overview.html" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border app-border hover:border-teal-500 app-text-secondary hover:text-teal-400 transition" title="Return to Overview Home Page">
+          <span>🏠</span>
+          <span>Home</span>
+        </a>
+
         <button id="themeToggleBtn" class="theme-toggle-btn flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border app-border transition-all" aria-label="Toggle Theme">
           <span id="themeSunIcon" class="opacity-50">☀️</span>
           <span class="text-slate-400">/</span>
@@ -56,10 +64,52 @@
           <span>Load Demo</span>
         </button>
 
-        <button id="saveStoryBtn" class="btn-secondary flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium border app-border transition">
-          <span id="saveBtnIcon">💾</span>
-          <span id="saveBtnText">Save</span>
+        <!-- Open File (MS Word Style) -->
+        <button id="openStoryFileBtn" class="btn-secondary flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium border app-border hover:border-teal-500 transition" title="Open an existing DOCX, PDF, or TXT story file">
+          <span>📂</span>
+          <span>Open</span>
         </button>
+        <input id="hiddenStoryFileInput" type="file" accept=".docx,.pdf,.txt,.json" class="hidden" />
+
+        <!-- Save Button with Format Dropdown (MS Word Style) -->
+        <div class="relative flex items-center">
+          <button id="saveStoryBtn" class="btn-secondary flex items-center gap-1.5 px-3.5 py-1.5 rounded-l-lg text-xs sm:text-sm font-medium border app-border border-r-0 transition" title="Save changes (auto-saves to current file)">
+            <span id="saveBtnIcon">💾</span>
+            <span id="saveBtnText">Save</span>
+          </button>
+          <button id="saveStoryDropdownBtn" class="btn-secondary px-2 py-1.5 rounded-r-lg text-xs sm:text-sm font-medium border app-border transition hover:border-teal-500 hover:text-teal-400" title="Choose format (DOCX, PDF, TXT)">
+            ▾
+          </button>
+          <!-- Save Dropdown Menu -->
+          <div id="saveStoryMenu" class="hidden absolute right-0 top-full mt-1.5 w-60 app-surface border app-border rounded-xl shadow-2xl p-1.5 z-50 text-xs">
+            <div id="saveMenuLinkedHeader" class="px-3 py-1.5 text-[11px] font-bold text-teal-400 border-b app-border mb-1 truncate hidden">
+              📄 Linked: <span id="saveMenuLinkedName">None</span>
+            </div>
+            <button id="saveToLinkedActionBtn" type="button" class="w-full text-left px-3 py-2 rounded-lg hover:bg-teal-500/10 text-teal-300 font-semibold flex items-center gap-2 transition">
+              <span>💾</span>
+              <span id="saveToLinkedActionText">Quick Save (Same File)</span>
+            </button>
+            <div class="border-t app-border my-1"></div>
+            <span class="block px-3 py-1 text-[10px] uppercase font-bold text-slate-400">Save As Format</span>
+            <button type="button" data-save-fmt="docx" class="save-as-format-btn w-full text-left px-3 py-1.5 rounded-lg hover:bg-slate-500/10 app-text-primary flex items-center justify-between transition">
+              <span class="flex items-center gap-2"><span>📄</span> Word Document</span>
+              <span class="text-[10px] app-text-muted">.docx</span>
+            </button>
+            <button type="button" data-save-fmt="pdf" class="save-as-format-btn w-full text-left px-3 py-1.5 rounded-lg hover:bg-slate-500/10 app-text-primary flex items-center justify-between transition">
+              <span class="flex items-center gap-2"><span>📕</span> PDF Document</span>
+              <span class="text-[10px] app-text-muted">.pdf</span>
+            </button>
+            <button type="button" data-save-fmt="txt" class="save-as-format-btn w-full text-left px-3 py-1.5 rounded-lg hover:bg-slate-500/10 app-text-primary flex items-center justify-between transition">
+              <span class="flex items-center gap-2"><span>📝</span> Plain Text</span>
+              <span class="text-[10px] app-text-muted">.txt</span>
+            </button>
+            <div class="border-t app-border my-1"></div>
+            <button id="saveToCloudActionBtn" type="button" class="w-full text-left px-3 py-1.5 rounded-lg hover:bg-slate-500/10 app-text-secondary flex items-center gap-2 transition">
+              <span>☁️</span>
+              <span>Save to Backend / Cloud</span>
+            </button>
+          </div>
+        </div>
 
         <button id="openGraphBtn" class="btn-secondary flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium border app-border transition">
           <span>🕸</span>
@@ -93,6 +143,11 @@
             <span id="activeChapterIndicator" class="font-medium text-teal-400">Chapter 1: Shadows of Delhi</span>
             <span class="hidden sm:inline">•</span>
             <span id="lastSavedIndicator" class="hidden sm:inline">All changes saved locally</span>
+            <span id="activeFileIndicatorBadge" class="hidden px-2.5 py-0.5 rounded-full bg-teal-500/15 border border-teal-500/30 text-teal-300 text-[11px] font-semibold items-center gap-1.5 shadow-sm">
+              <span>📄</span>
+              <span id="activeFileNameSpan">story.docx</span>
+              <span class="text-[9px] text-teal-400/80 font-normal">(MS Word Mode)</span>
+            </span>
           </div>
 
           <div class="flex items-center gap-2">
@@ -325,7 +380,238 @@
     </div>
   </div>
 
+  <!-- MODAL 3: CLOSE CHAPTER CONFIRMATION -->
+  <div id="closeChapterModalOverlay" class="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="app-surface border app-border rounded-2xl w-full max-w-md p-6 shadow-2xl">
+      <div class="flex items-start gap-3.5 mb-4">
+        <div class="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center text-lg shrink-0">
+          ⚠️
+        </div>
+        <div>
+          <h3 id="closeChapterModalTitle" class="text-base font-bold app-text-primary">Save Chapter Before Closing?</h3>
+          <p id="closeChapterModalDesc" class="text-xs app-text-muted mt-1 leading-relaxed">
+            Do you want to save your changes before closing this chapter tab?
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2.5 pt-4 border-t app-border">
+        <button id="cancelCloseChapterBtn" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-medium app-text-secondary hover:bg-slate-500/10 border app-border transition">
+          Cancel
+        </button>
+        <button id="discardCloseChapterBtn" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-rose-400 hover:bg-rose-500/10 border border-rose-500/20 transition">
+          Don't Save
+        </button>
+        <button id="saveAndCloseChapterBtn" type="button" class="btn-primary px-4 py-1.5 rounded-lg text-xs font-semibold text-white shadow transition flex items-center gap-1.5">
+          <span>💾</span>
+          <span>Save & Close</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 4: LOAD DEMO STORY WITH CONFIG -->
+  <div id="loadDemoModalOverlay" class="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="app-surface border app-border rounded-2xl w-full max-w-lg p-6 shadow-2xl">
+      <div class="flex items-center justify-between mb-4 pb-3 border-b app-border">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl p-1.5 rounded-lg bg-teal-500/10 border border-teal-500/20 text-teal-400">🧪</span>
+          <div>
+            <h3 class="text-base font-bold app-text-primary">Load Demo Story</h3>
+            <p class="text-xs app-text-muted">Choose a story preset or random story, and set chapter count</p>
+          </div>
+        </div>
+        <button id="closeLoadDemoModalBtn" type="button" class="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-500/20 text-lg transition leading-none">
+          ✕
+        </button>
+      </div>
+
+      <!-- Story Preset Cards -->
+      <div class="space-y-2 mb-4">
+        <label class="block text-xs font-semibold uppercase tracking-wider text-teal-400">Select Story Preset</label>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" id="demoPresetCardsContainer">
+          <button type="button" data-preset="random" class="demo-preset-card active p-3 rounded-xl border text-left transition flex flex-col justify-between">
+            <div>
+              <span class="text-sm font-bold block app-text-primary">🎲 Random Story</span>
+              <span class="text-[11px] app-text-muted block mt-0.5">Surprise me with any genre & planted conflicts</span>
+            </div>
+            <span class="text-[10px] text-teal-400 font-semibold mt-2">Recommended</span>
+          </button>
+          <button type="button" data-preset="lanterns" class="demo-preset-card p-3 rounded-xl border text-left transition flex flex-col justify-between">
+            <div>
+              <span class="text-sm font-bold block app-text-primary">🏮 Lantern Spirits</span>
+              <span class="text-[11px] app-text-muted block mt-0.5">Urban fantasy, Delhi to Mumbai secret train journey</span>
+            </div>
+            <span class="text-[10px] app-text-muted font-semibold mt-2">Fantasy / Mystery</span>
+          </button>
+          <button type="button" data-preset="obsidian" class="demo-preset-card p-3 rounded-xl border text-left transition flex flex-col justify-between">
+            <div>
+              <span class="text-sm font-bold block app-text-primary">🌌 Obsidian Star</span>
+              <span class="text-[11px] app-text-muted block mt-0.5">Sci-Fi starship navigation & quantum drive rules</span>
+            </div>
+            <span class="text-[10px] app-text-muted font-semibold mt-2">Space Odyssey</span>
+          </button>
+          <button type="button" data-preset="fog" class="demo-preset-card p-3 rounded-xl border text-left transition flex flex-col justify-between">
+            <div>
+              <span class="text-sm font-bold block app-text-primary">🕵️ Midnight Fog</span>
+              <span class="text-[11px] app-text-muted block mt-0.5">Noir detective thriller, Kolkata docks & ferry rules</span>
+            </div>
+            <span class="text-[10px] app-text-muted font-semibold mt-2">Noir Mystery</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Chapter Count Selector -->
+      <div class="space-y-2 mb-6">
+        <label class="block text-xs font-semibold uppercase tracking-wider text-teal-400">
+          How many chapters do you want to load?
+        </label>
+        <div class="flex items-center gap-2" id="demoChapterCountContainer">
+          <button type="button" data-count="1" class="demo-count-btn flex-1 py-2 rounded-lg border text-xs font-bold transition">1 Ch.</button>
+          <button type="button" data-count="2" class="demo-count-btn flex-1 py-2 rounded-lg border text-xs font-bold transition">2</button>
+          <button type="button" data-count="3" class="demo-count-btn flex-1 py-2 rounded-lg border text-xs font-bold transition">3</button>
+          <button type="button" data-count="4" class="demo-count-btn active flex-1 py-2 rounded-lg border text-xs font-bold transition">4 (All)</button>
+          <button type="button" data-count="5" class="demo-count-btn flex-1 py-2 rounded-lg border text-xs font-bold transition">5</button>
+        </div>
+        <p class="text-[11px] app-text-muted">Loads the chosen chapters into your workspace with full Story Bible continuity tracking.</p>
+      </div>
+
+      <!-- Action Footer -->
+      <div class="flex items-center justify-end gap-2.5 pt-3 border-t app-border">
+        <button id="cancelLoadDemoModalBtn" type="button" class="px-4 py-2 rounded-lg text-xs font-medium app-text-secondary hover:bg-slate-500/10 border app-border transition">
+          Cancel
+        </button>
+        <button id="confirmLoadDemoModalBtn" type="button" class="btn-primary px-5 py-2 rounded-lg text-xs font-bold text-white shadow transition flex items-center gap-1.5">
+          <span>✨</span>
+          <span>Load Demo Story</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 5: SAVE AS FORMAT (DOCX, PDF, TXT) -->
+  <div id="saveFormatModalOverlay" class="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="app-surface border app-border rounded-2xl w-full max-w-md p-6 shadow-2xl">
+      <div class="flex items-center justify-between mb-4 pb-3 border-b app-border">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl p-1.5 rounded-lg bg-teal-500/10 border border-teal-500/20 text-teal-400">💾</span>
+          <div>
+            <h3 class="text-base font-bold app-text-primary">Save Story</h3>
+            <p class="text-xs app-text-muted">Choose your format to save your story file</p>
+          </div>
+        </div>
+        <button id="closeSaveFormatModalBtn" type="button" class="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-500/20 text-lg transition leading-none">
+          ✕
+        </button>
+      </div>
+
+      <div class="space-y-2 mb-5">
+        <label class="block text-xs font-semibold uppercase tracking-wider text-teal-400">Choose File Format</label>
+        <div class="space-y-2" id="saveFormatRadioGroup">
+          <label class="flex items-center justify-between p-3 rounded-xl border app-border hover:border-teal-500 cursor-pointer transition app-surface-secondary">
+            <div class="flex items-center gap-3">
+              <input type="radio" name="saveFormatChoice" value="docx" checked class="accent-teal-500" />
+              <div>
+                <span class="text-xs font-bold block app-text-primary">📄 Microsoft Word (.docx)</span>
+                <span class="text-[11px] app-text-muted">Formatted chapters with headings & paragraphs</span>
+              </div>
+            </div>
+            <span class="text-[10px] text-teal-400 font-bold">Recommended</span>
+          </label>
+
+          <label class="flex items-center justify-between p-3 rounded-xl border app-border hover:border-teal-500 cursor-pointer transition app-surface-secondary">
+            <div class="flex items-center gap-3">
+              <input type="radio" name="saveFormatChoice" value="pdf" class="accent-teal-500" />
+              <div>
+                <span class="text-xs font-bold block app-text-primary">📕 PDF Document (.pdf)</span>
+                <span class="text-[11px] app-text-muted">Print-ready paginated PDF document</span>
+              </div>
+            </div>
+            <span class="text-[10px] app-text-muted">Document</span>
+          </label>
+
+          <label class="flex items-center justify-between p-3 rounded-xl border app-border hover:border-teal-500 cursor-pointer transition app-surface-secondary">
+            <div class="flex items-center gap-3">
+              <input type="radio" name="saveFormatChoice" value="txt" class="accent-teal-500" />
+              <div>
+                <span class="text-xs font-bold block app-text-primary">📝 Plain Text (.txt)</span>
+                <span class="text-[11px] app-text-muted">Clean UTF-8 plain text with chapter dividers</span>
+              </div>
+            </div>
+            <span class="text-[10px] app-text-muted">Universal</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="p-3 rounded-lg bg-teal-500/10 border border-teal-500/20 text-[11px] app-text-secondary mb-4 flex items-start gap-2">
+        <span class="text-teal-400 text-sm">💡</span>
+        <span><strong>MS Word Workflow:</strong> Once saved, any future clicks on <strong>Save</strong> (or Ctrl+S) will directly update this same file on your device.</span>
+      </div>
+
+      <div class="flex items-center justify-end gap-2.5 pt-3 border-t app-border">
+        <button id="cancelSaveFormatModalBtn" type="button" class="px-4 py-2 rounded-lg text-xs font-medium app-text-secondary hover:bg-slate-500/10 border app-border transition">
+          Cancel
+        </button>
+        <button id="confirmSaveFormatBtn" type="button" class="btn-primary px-5 py-2 rounded-lg text-xs font-bold text-white shadow transition flex items-center gap-1.5">
+          <span>💾</span>
+          <span>Save File</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GUEST TRIAL LIMIT MODAL (Triggered after 3 free guest actions) -->
+  <div id="guestTrialModalOverlay" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+    <div class="app-surface border border-amber-500/40 rounded-2xl max-w-md w-full p-6 shadow-2xl relative animate-in fade-in zoom-in duration-200">
+      <div class="flex items-center justify-between pb-3 border-b app-border mb-4">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">🔒</span>
+          <div>
+            <h3 class="text-base font-bold app-text-primary">Guest Trial Limit Reached</h3>
+            <p class="text-xs text-amber-400 font-semibold">3 of 3 Free Preview Actions Used</p>
+          </div>
+        </div>
+        <button id="closeGuestTrialModalBtn" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-500/20 transition leading-none">
+          ✕
+        </button>
+      </div>
+
+      <div class="space-y-3 mb-5 text-xs app-text-secondary leading-relaxed">
+        <p>
+          You have reached the free 3-action preview limit as an unregistered guest (attempted: <strong id="guestTrialFeatureName" class="text-teal-400">Feature</strong>).
+        </p>
+        <div class="p-3.5 rounded-xl bg-teal-500/10 border border-teal-500/20 space-y-2">
+          <div class="font-bold text-teal-300 flex items-center gap-1.5 text-xs">
+            <span>✨</span> Create an account or log in to unlock unlimited access:
+          </div>
+          <ul class="space-y-1.5 text-[11px] app-text-secondary pl-5 list-disc">
+            <li><strong>Unlimited</strong> Contradiction Engine & Lore Consistency Checks</li>
+            <li><strong>Unlimited</strong> Multiverse Branching & AI Character Dialogue</li>
+            <li><strong>Full SQLite Database</strong> saving for all books & chapters</li>
+            <li><strong>100% Free</strong> with no credit card required</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="flex flex-col sm:flex-row items-center justify-end gap-2.5 pt-3 border-t app-border">
+        <button id="dismissGuestTrialModalBtn" type="button" class="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-semibold app-text-secondary hover:bg-slate-500/10 border app-border text-center transition">
+          Close Preview
+        </button>
+        <a href="login.html" class="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-semibold app-text-secondary hover:bg-slate-500/10 border app-border text-center transition">
+          Sign In
+        </a>
+        <a href="register.html" class="w-full sm:w-auto btn-primary px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-lg text-center transition flex items-center justify-center gap-1.5">
+          <span>⚡</span>
+          <span>Get Started Free</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- GUEST TRIAL TOAST CONTAINER -->
+  <div id="guestToastContainer" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none max-w-sm"></div>
+
   <!-- Connect Vanilla JS File -->
-  <script src="script.js?v=5.2"></script>
+  <script src="script.js?v=7.0"></script>
 </body>
 </html>

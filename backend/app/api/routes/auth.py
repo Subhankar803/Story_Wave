@@ -48,5 +48,23 @@ def login_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    if payload.otp is not None and str(payload.otp).strip() != "123456":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid two-step verification code",
+        )
+
     access_token = create_access_token(subject=user.id)
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.post("/verify-otp")
+def verify_otp(payload: dict) -> dict[str, str | bool]:
+    """Verify two-step verification code (for now hardcoded to 123456)."""
+    otp = str(payload.get("otp", "")).strip()
+    if otp != "123456":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid two-step verification code",
+        )
+    return {"valid": True, "message": "Verification code accepted"}

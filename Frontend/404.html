@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <title>404 - Page Not Found — Story Wave</title>
+  <meta name="description" content="The requested Story Wave page could not be found in this timeline. Explore our story studio, overview, or return home." />
+  <meta name="theme-color" content="#081326" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <!-- Google Fonts Inter & Merriweather -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Merriweather:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="overview.css" />
+  <style>
+    .error-container {
+      min-height: calc(100vh - 72px - 260px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 24px;
+      text-align: center;
+    }
+    .error-card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 48px 36px;
+      max-width: 620px;
+      width: 100%;
+      box-shadow: var(--card-shadow);
+    }
+    .error-code {
+      font-size: 5.5rem;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -0.04em;
+      color: var(--accent);
+      margin-bottom: 12px;
+      font-family: 'Inter', sans-serif;
+    }
+    .error-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 14px;
+      border-radius: 9999px;
+      background-color: var(--accent-soft);
+      border: 1px solid var(--accent-border);
+      color: var(--accent);
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .error-title {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+      margin-bottom: 14px;
+    }
+    .error-desc {
+      font-size: 1.05rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      margin-bottom: 32px;
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .error-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+    }
+    @media (max-width: 600px) {
+      .error-code { font-size: 4rem; }
+      .error-title { font-size: 1.5rem; }
+      .error-card { padding: 32px 20px; }
+      .error-actions { flex-direction: column; width: 100%; }
+      .error-actions .btn { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <header class="navbar">
+    <div class="container nav-content">
+      <!-- Clickable Logo -->
+      <a href="overview.html" class="brand-logo" aria-label="Story Wave Home">
+        <div class="brand-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path>
+            <line x1="16" y1="8" x2="2" y2="22"></line>
+            <line x1="17.5" y1="15" x2="9" y2="15"></line>
+          </svg>
+        </div>
+        <span class="brand-name">STORY WAVE</span>
+      </a>
+
+      <!-- Theme Toggle & Action -->
+      <div class="nav-actions">
+        <button id="themeToggleBtn" class="theme-toggle-btn" aria-label="Toggle Theme" title="Toggle Theme">
+          <svg id="themeSunIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <svg id="themeMoonIcon" class="hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+
+        <a href="index.html" class="btn btn-primary">Open Studio</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- 404 Main Content -->
+  <main class="error-container">
+    <div class="error-card">
+      <div class="error-badge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span>Timeline Anomaly</span>
+      </div>
+      <div class="error-code">404</div>
+      <h1 class="error-title">Page Lost in the Multiverse</h1>
+      <p class="error-desc">
+        The chapter, character file, or scene branch you were looking for doesn't exist in this canon or may have shifted across timelines.
+      </p>
+
+      <div class="error-actions">
+        <a href="overview.html" class="btn btn-primary" style="padding: 12px 26px;">Return to Overview</a>
+        <a href="index.html" class="btn btn-secondary" style="padding: 12px 24px;">Open Story Studio</a>
+        <a href="login.html" class="btn btn-link" style="color: var(--text-primary); text-decoration: underline;">Sign In</a>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer with Contact Links & Copyright -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <a href="overview.html" class="brand-logo">
+            <div class="brand-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path>
+                <line x1="16" y1="8" x2="2" y2="22"></line>
+                <line x1="17.5" y1="15" x2="9" y2="15"></line>
+              </svg>
+            </div>
+            <span class="brand-name">STORY WAVE</span>
+          </a>
+          <p class="footer-tagline">
+            Intelligent AI storytelling companion and narrative consistency engine for novelists, worldbuilders, and fiction writers.
+          </p>
+        </div>
+
+        <div class="footer-links-group">
+          <div>
+            <h4 class="footer-column-title">Quick Links</h4>
+            <ul class="footer-links-list">
+              <li><a href="overview.html" class="footer-link">Overview</a></li>
+              <li><a href="overview.html#features" class="footer-link">Features</a></li>
+              <li><a href="overview.html#how-it-works" class="footer-link">How It Works</a></li>
+              <li><a href="index.html" class="footer-link">Story Studio</a></li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 class="footer-column-title">Account</h4>
+            <ul class="footer-links-list">
+              <li><a href="login.html" class="footer-link">Login</a></li>
+              <li><a href="register.html" class="footer-link">Register</a></li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 class="footer-column-title">Contact Support</h4>
+            <ul class="footer-links-list">
+              <li>
+                <a href="mailto:support@storywave.ai" class="footer-link" title="Email Support">
+                  ✉ support@storywave.ai
+                </a>
+              </li>
+              <li>
+                <a href="tel:+18005550199" class="footer-link" title="Call Support">
+                  ✆ +1 (800) 555-0199
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <div>&copy; <span id="copyrightYear">2026</span> Story Wave. All rights reserved.</div>
+        <div>Built for fiction writers, novelists, and narrative designers.</div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Theme sync
+    const savedTheme = localStorage.getItem('storyWaveTheme_v1') || localStorage.getItem('storyBibleTheme_v1') || 'dark';
+    const htmlEl = document.documentElement;
+    const sunIcon = document.getElementById('themeSunIcon');
+    const moonIcon = document.getElementById('themeMoonIcon');
+
+    function applyTheme(t) {
+      if (t === 'dark') {
+        htmlEl.classList.add('dark');
+        if (sunIcon) sunIcon.style.display = 'block';
+        if (moonIcon) moonIcon.style.display = 'none';
+      } else {
+        htmlEl.classList.remove('dark');
+        if (sunIcon) sunIcon.style.display = 'none';
+        if (moonIcon) moonIcon.style.display = 'block';
+      }
+      localStorage.setItem('storyWaveTheme_v1', t); localStorage.setItem('storyBibleTheme_v1', t);
+    }
+    applyTheme(savedTheme);
+
+    const toggleBtn = document.getElementById('themeToggleBtn');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        applyTheme(htmlEl.classList.contains('dark') ? 'light' : 'dark');
+      });
+    }
+
+    // Dynamic copyright year
+    const yr = document.getElementById('copyrightYear');
+    if (yr) yr.textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

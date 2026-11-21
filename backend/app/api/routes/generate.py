@@ -35,6 +35,10 @@ async def generate_narrative(
 ):
     """Generate next scenes, in-voice dialogue, or 2-3 branching options grounded in the bible (FR-4)."""
     check_rate_limit(request)
+    custom_key = request.headers.get("x-gemini-api-key")
+    if custom_key:
+        from app.services import model_adapter
+        model_adapter.ensure_configured(custom_key)
     generator = StoryGenerator(db)
 
     if payload.type in ("branches", "next_scene"):
@@ -45,6 +49,7 @@ async def generate_narrative(
             emotion=payload.emotion,
             intensity=payload.intensity,
             sabotage=payload.sabotage,
+            canvas_context=payload.canvas_context,
         )
         return GenerateResponse(
             type=payload.type,
@@ -63,6 +68,7 @@ async def generate_narrative(
             situation=payload.situation,
             emotion=payload.emotion,
             intensity=payload.intensity,
+            canvas_context=payload.canvas_context,
         )
         return GenerateResponse(
             type="dialogue",
@@ -145,9 +151,9 @@ async def _process_voice_analysis(
         service = EmotionVoiceService(db)
         report = service.analyze_audio_voice(temp_path, dialogue_text=clean_text)
         inten = report.intensity or 7
-        del_rate = round(min(9.8, max(7.0, 7.4 + (inten % 3) * 0.7)), 1)
-        clar_rate = round(min(9.9, max(7.5, 8.2 + ((inten + 1) % 3) * 0.6)), 1)
-        tone_rate = 6.8 if report.words_vs_tone_mismatch else 9.4
+        del_rate = round(min(9.9, max(6.5, 7.0 + inten * 0.28)), 1)
+        clar_rate = round(min(9.9, max(7.0, 7.8 + ((inten * 3) % 5) * 0.35 + (0.5 if inten >= 8 else 0))), 1)
+        tone_rate = 6.8 if report.words_vs_tone_mismatch else round(min(9.9, max(8.0, 8.5 + (0.9 if report.valence == "positive" else 0.5))), 1)
         overall_rate = round((del_rate + clar_rate + tone_rate) / 3, 1)
 
         return VoiceAnalysisResponse(

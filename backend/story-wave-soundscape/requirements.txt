@@ -1,0 +1,7 @@
+# torch / torchaudio / diffusers / transformers / numpy come from the MOSS install in the Dockerfile
+# (it pins torch 2.9.0+cu128, transformers 4.57.1, diffusers 0.37.1, numpy 1.26.4). Do not pin numpy here.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+soundfile>=0.12
+google-genai>=1.0

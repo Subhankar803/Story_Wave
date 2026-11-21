@@ -7,6 +7,9 @@ from app.services import model_adapter
 import Story_Wave_model as sb
 
 
+from app.models.story import Story
+
+
 def test_rule_relationship_negation_flagged():
     bible = [
         sb.Fact(
@@ -75,34 +78,44 @@ def test_rule_lactose_intolerance():
     assert conflicts[0].type == "broken character rule"
 
 
-def test_e2e_chapter_analysis_with_custom_rule():
-    app = create_app()
-    client = TestClient(app)
-    token = create_access_token("1")
-    headers = {"Authorization": f"Bearer {token}"}
-
+def test_e2e_chapter_analysis_with_custom_rule(client: TestClient, auth_headers: dict[str, str], test_story: Story):
     # Add rule
     r_rule = client.post(
-        "/stories/1/rules",
+        f"/stories/{test_story.id}/rules",
         json={"entity_name": "Gopu", "description": "Loves Bithika only no one else"},
-        headers=headers,
+        headers=auth_headers,
     )
     assert r_rule.status_code == 201
 
-    # Update Chapter 7 with rule-violating text
-    r_chap = client.put(
-        "/stories/1/chapters/7",
-        json={"text": "Subhankar does not love bithika"},
-        headers=headers,
+    # Update Chapter 1 with rule-violating text
+    r_chap = client.post(
+        f"/stories/{test_story.id}/chapters",
+        json={"number": 1, "text": "Subhankar does not love bithika"},
+        headers=auth_headers,
     )
-    if r_chap.status_code == 404:
-        r_chap = client.post(
-            "/stories/1/chapters",
-            json={"number": 7, "text": "Subhankar does not love bithika"},
-            headers=headers,
-        )
-    assert r_chap.status_code == 200
+    assert r_chap.status_code in (200, 201)
     data = r_chap.json()
     rule_flags = [f for f in data["flags"] if f["type"] == "broken character rule"]
     assert len(rule_flags) >= 1
     assert "Subhankar does not love bithika" in rule_flags[0]["new_quote"]
+
+
+def test_rule_violation_sentence_isolated_after_dialogue_quotes():
+    bible = [
+        sb.Fact(
+            entity="Subhankar",
+            attribute="rule",
+            value="Loves coding",
+            chapter=1,
+            quote="Subhankar: Loves coding",
+        )
+    ]
+    text = (
+        'Aarav squinted with his bright green eyes at the toward him. '
+        '"The key Mom hid under the staircase," he said, "is what you want, isn\'t it?" '
+        'Subhankar does not love coding'
+    )
+    conflicts = model_adapter.check(bible, text, 4)
+    rule_conflicts = [c for c in conflicts if c.type == "broken character rule"]
+    assert len(rule_conflicts) == 1
+    assert rule_conflicts[0].new_quote == "Subhankar does not love coding"

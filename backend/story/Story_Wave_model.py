@@ -36,15 +36,10 @@ from pydantic import BaseModel
 # Tried in order. If one is overloaded (503) or retired (404) the next is used.
 # Gemini model names change often: edit this list from https://aistudio.google.com
 MODELS = [
-    "gemini-2.5-flash",
     "gemini-2.0-flash",
+    "gemini-2.5-flash",
     "gemini-1.5-flash",
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemini-3.5-flash",
-    "gemini-3.6-flash",
-    "gemini-3.7-flash",
-    "gemini-3.8-flash",
+    "gemini-1.5-pro",
 ]
 ATTRS = "location, appearance, age, relationship, possession, ability, world_rule, knowledge, event"
 
@@ -53,9 +48,31 @@ _dead_models = set()
 
 
 def configure(api_key: str | None = None) -> None:
-    """Optional. Otherwise the GEMINI_API_KEY environment variable is used."""
+    """Optional. Otherwise GEMINI_API_KEY or GOOGLE_API_KEY environment variable is used."""
     global _client
-    key = api_key or os.environ.get("GEMINI_API_KEY")
+    key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not key:
+        from pathlib import Path
+        for p in (
+            Path(__file__).resolve().parent / ".env",
+            Path(__file__).resolve().parent.parent / ".env",
+            Path(__file__).resolve().parent.parent.parent / ".env",
+            Path(".env"),
+            Path("backend/.env"),
+        ):
+            if p.is_file():
+                try:
+                    for line in p.read_text(encoding="utf-8").splitlines():
+                        line_s = line.strip()
+                        if line_s.startswith(("GEMINI_API_KEY=", "GOOGLE_API_KEY=")):
+                            k = line_s.split("=", 1)[1].strip().strip('"').strip("'")
+                            if k:
+                                key = k
+                                break
+                except Exception:
+                    pass
+            if key:
+                break
     if not key:
         raise RuntimeError("Set GEMINI_API_KEY or call configure(api_key=...).")
     _client = genai.Client(api_key=key)
@@ -70,7 +87,7 @@ def _get_client():
 def call_llm(contents, temperature: float = 0.0) -> str:
     """Send a prompt (str, or a list with audio parts), return JSON text. Falls back across models."""
     client = _get_client()
-    for _ in range(4):
+    for _ in range(3):
         for model in MODELS:
             if model in _dead_models:
                 continue
@@ -86,8 +103,8 @@ def call_llm(contents, temperature: float = 0.0) -> str:
                 if "404" in msg:
                     _dead_models.add(model)
                 print(f"[{model}] failed: {msg[:70]}")
-        print("All models busy, waiting 15s...")
-        time.sleep(15)
+        print("All models busy, waiting 5s...")
+        time.sleep(5)
     raise RuntimeError("All models busy. Try again in a few minutes.")
 
 

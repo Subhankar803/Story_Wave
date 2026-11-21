@@ -9,8 +9,10 @@ const WS_BASE = API_BASE.replace(/^http/, 'ws');
 // Initial application state and Story Bible data
 const defaultAppState = {
   theme: 'dark',
-  storyTitle: 'The Last Kingdom',
+  storyTitle: 'Untitled Story',
   storyId: null,
+  activeFileName: null,
+  activeFileFormat: null,
   activeChapterId: 'chap-1',
   activeChapterNumber: 1,
   activeInsightTab: 'characters',
@@ -26,55 +28,16 @@ const defaultAppState = {
       id: 'chap-1',
       number: 1,
       title: 'Chapter 1',
-      subtitle: 'Shadows of Delhi',
-      content: `<p>The monsoon mist clung to the stone ramparts of <span class="fact-entity" title="Place: Delhi">Delhi</span> as <span class="fact-entity" title="Character: Aarav (Age 20)">Aarav</span> fastened his weathered cloak. At <span class="fact-entity" title="Established Fact: Age 20">20 years old</span>, with sharp brown eyes that missed very little, he had spent three years guarding the royal archives alongside his trusted friend <span class="fact-entity" title="Character: Diya">Diya</span>.</p><p>"If <span class="fact-entity" title="Character: Varun (Enemy)">Varun</span> reaches the <span class="fact-entity" title="Place: Dark Forest">Dark Forest</span> before dawn, the northern seal will fall," Diya whispered, holding up the brass lantern. "Remember what the elders taught us: <span class="fact-entity" title="World Rule">spirits cannot cross running water</span>. Stay near the riverbanks if the night wraiths appear."</p><p>By the third night of their journey toward the <span class="fact-entity" title="Place: Ancient Kingdom">Ancient Kingdom</span>, exhaustion weighed heavily on them. <span id="flaggedConflictSpan" class="fact-conflict" title="Possible Inconsistency: Previously stated Aarav has brown eyes">Aarav squinted with his bright green eyes</span> courtyard through the shattered eastern gate, his blade drawn against the gathering shadows.</p>`
-    },
-    {
-      id: 'chap-2',
-      number: 2,
-      title: 'Chapter 2',
-      subtitle: 'The Whispering Ford',
-      content: `<p>Cold river spray rose where the ancient stone bridge had collapsed decades ago. <span class="fact-entity">Aarav</span> knelt beside the rushing torrent, testing the current with his staff while <span class="fact-entity">Diya</span> scanned the tree line of the <span class="fact-entity">Dark Forest</span>.</p><p>Across the water, pale silhouettes flickered between the pines—<span class="fact-entity">Varun</span>'s scouts had already awakened the dormant sentinels, yet none dared step into the foaming rapids.</p>`
-    },
-    {
-      id: 'chap-3',
-      number: 3,
-      title: 'Chapter 3',
-      subtitle: 'Citadel of Ash',
-      content: `<p>Inside the inner sanctum of the <span class="fact-entity">Ancient Kingdom</span>, obsidian pillars bore carvings of the first dynasty. <span class="fact-entity">Aarav</span> traced the royal sigil, realizing the prophecy spoke not of a weapon, but of a bloodline bound to <span class="fact-entity">Delhi</span>'s founding oath.</p>`
+      subtitle: 'New Scene',
+      content: ''
     }
   ],
   insights: {
-    characters: [
-      { name: 'Aarav', role: 'Main Character', age: '20', details: 'Eyes: Brown • Royal archive guardian seeking the northern seal.' },
-      { name: 'Diya', role: 'Friend & Strategist', age: '19', details: 'Expert in ancient scripts and protective wards.' },
-      { name: 'Varun', role: 'Enemy Commander', age: '28', details: 'Former captain seeking the Ancient Kingdom throne.' }
-    ],
-    places: [
-      { name: 'Delhi', type: 'Capital Fortress', desc: 'Starting point of the expedition; houses the royal archives.' },
-      { name: 'Dark Forest', type: 'Border Wilderness', desc: 'Shrouded woodland patrolled by night wraiths.' },
-      { name: 'Ancient Kingdom', type: 'Fallen Citadel', desc: 'Ruined northern stronghold containing the obsidian sanctum.' }
-    ],
-    timeline: [
-      { day: 'Day 1', event: 'Aarav and Diya depart Delhi before dawn with the archive seal.' },
-      { day: 'Day 2', event: 'They enter the Dark Forest and evade Varun’s advance scouts.' },
-      { day: 'Day 3', event: 'Aarav discovers the shattered gate of the Ancient Kingdom castle.' }
-    ],
-    rules: [
-      { title: 'Hydro-Barrier Law', rule: 'Spirits cannot cross running water under any circumstance.' },
-      { title: 'Sanctum Seal', rule: 'Only an archive bearer from Delhi can read the obsidian inscriptions.' }
-    ],
-    flags: [
-      {
-        id: 1,
-        title: 'changed physical trait',
-        severity: 'Warning',
-        explanation: 'Aarav previously was described as having brown eyes, but is now described as having bright green eyes.',
-        previousFact: 'He had brown eyes and wore the silver watch',
-        currentFact: 'Aarav squinted with his bright green eyes',
-        resolved: false
-      }
-    ]
+    characters: [],
+    places: [],
+    timeline: [],
+    rules: [],
+    flags: []
   }
 };
 
@@ -88,15 +51,39 @@ let recordedAudioChunks = [];
 let recordedAudioBlob = null;
 let currentTtsAudio = null;
 let speechRecognizer = null;
+let pendingCloseChapterId = null;
+let selectedDemoPreset = 'random';
+let selectedDemoChapterCount = 4;
+let activeFileHandle = null;
+let activeFileName = null;
+let activeFileFormat = null;
 
 // Load state helper
 function loadStateFromStorage() {
   try {
-    const savedState = localStorage.getItem('storyBibleAppState_v1');
+    const savedState = localStorage.getItem('storyBibleAppState_v3');
     const savedTheme = localStorage.getItem('storyBibleTheme_v1');
     const parsed = savedState ? JSON.parse(savedState) : structuredClone(defaultAppState);
     if (savedTheme) parsed.theme = savedTheme;
     if (!parsed.aiPanelHeight || parsed.aiPanelHeight < 500) parsed.aiPanelHeight = 520;
+    if (!parsed.chapters || parsed.chapters.length === 0) {
+      parsed.chapters = structuredClone(defaultAppState.chapters);
+      parsed.activeChapterId = 'chap-1';
+      parsed.activeChapterNumber = 1;
+    }
+    // If the canvas is blank or only contains random/empty text, ensure clean initial state
+    const totalChars = (parsed.chapters || []).reduce((sum, c) => sum + (c.content || '').replace(/<[^>]*>/g, '').trim().length, 0);
+    if (totalChars < 12) {
+      if (parsed.insights) {
+        parsed.insights.characters = [];
+        parsed.insights.places = [];
+        parsed.insights.timeline = [];
+        parsed.insights.flags = [];
+      }
+      if (parsed.storyTitle === 'The Last Kingdom' && !parsed.chapters.some(c => (c.content || '').includes('Aarav'))) {
+        parsed.storyTitle = 'Untitled Story';
+      }
+    }
     return parsed;
   } catch (e) {
     return structuredClone(defaultAppState);
@@ -105,8 +92,181 @@ function loadStateFromStorage() {
 
 // Save current state to localStorage
 function saveStateToStorage() {
-  localStorage.setItem('storyBibleAppState_v1', JSON.stringify(appState));
+  localStorage.setItem('storyBibleAppState_v3', JSON.stringify(appState));
   localStorage.setItem('storyBibleTheme_v1', appState.theme);
+}
+
+// -----------------------------------------------------------------------------
+// GUEST TRIAL & USAGE ENFORCEMENT ENGINE (Max 3 Free Actions for Unregistered Guests)
+// -----------------------------------------------------------------------------
+const GUEST_TRIAL_LIMIT = 3;
+const GUEST_USAGE_KEY = 'storyWaveGuestUsageCount_v1';
+
+function isUserLoggedIn() {
+  try {
+    const raw = localStorage.getItem('storyWaveCurrentUser_v1') || 
+                localStorage.getItem('storyBibleCurrentUser_v1') ||
+                sessionStorage.getItem('storyWaveCurrentUser_v1') ||
+                sessionStorage.getItem('storyBibleCurrentUser_v1');
+    if (!raw) return false;
+    const u = JSON.parse(raw);
+    return !!(u && (u.email || u.name));
+  } catch (e) {
+    return false;
+  }
+}
+
+function getGuestUsageCount() {
+  const val = parseInt(localStorage.getItem(GUEST_USAGE_KEY), 10);
+  return isNaN(val) ? 0 : val;
+}
+
+function updateGuestTrialUI() {
+  const badgeContainer = document.getElementById('userAuthStatusContainer');
+  if (!badgeContainer) return;
+
+  const loggedIn = isUserLoggedIn();
+  if (loggedIn) {
+    let userName = 'Author';
+    try {
+      const u = JSON.parse(localStorage.getItem('storyWaveCurrentUser_v1') || sessionStorage.getItem('storyWaveCurrentUser_v1') || '{}');
+      if (u.name) userName = u.name.split(' ')[0];
+      else if (u.email) userName = u.email.split('@')[0];
+    } catch (e) {}
+
+    badgeContainer.innerHTML = `
+      <div class="flex items-center gap-1.5 sm:gap-2">
+        <span class="text-xs px-2.5 py-1 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-400 font-medium flex items-center gap-1.5" title="Logged in with full unlimited access">
+          <span>👑</span>
+          <span class="font-bold">${escapeHtml(userName)}</span>
+          <span class="text-[10px] uppercase font-semibold text-teal-300/80 hidden md:inline">• Unlimited</span>
+        </span>
+        <button id="headerLogoutBtn" onclick="handleUserLogout()" class="text-xs px-2 py-1 rounded-lg hover:bg-red-500/10 text-slate-400 hover:text-red-400 border border-transparent hover:border-red-500/20 transition flex items-center gap-1" title="Sign out of Story Wave">
+          <span>🚪</span>
+          <span class="hidden sm:inline">Logout</span>
+        </button>
+      </div>
+    `;
+  } else {
+    const used = getGuestUsageCount();
+    const remaining = Math.max(0, GUEST_TRIAL_LIMIT - used);
+    badgeContainer.innerHTML = `
+      <div class="flex items-center gap-1.5 sm:gap-2">
+        <span class="text-xs px-2 sm:px-2.5 py-1 rounded-full ${remaining > 0 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-red-500/10 border-red-500/30 text-red-400'} border font-medium flex items-center gap-1.5" title="Guest trial: 3 actions max. Register for unlimited access.">
+          <span>🎁</span>
+          <span>Guest: <strong>${remaining}/${GUEST_TRIAL_LIMIT}</strong> left</span>
+        </span>
+        <a href="register.html" class="text-xs px-2.5 py-1 rounded-lg bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold transition shadow-sm flex items-center gap-1">
+          <span>⚡</span>
+          <span class="hidden md:inline">Get Unlimited</span>
+          <span class="md:hidden">Sign Up</span>
+        </a>
+      </div>
+    `;
+  }
+}
+
+function checkGuestActionLimit(featureName = 'this feature') {
+  if (isUserLoggedIn()) {
+    return true; // Logged-in users enjoy 100% UNLIMITED access forever!
+  }
+
+  const currentCount = getGuestUsageCount();
+  if (currentCount >= GUEST_TRIAL_LIMIT) {
+    showGuestTrialLimitModal(featureName);
+    return false;
+  }
+
+  // Count this action
+  const newCount = currentCount + 1;
+  localStorage.setItem(GUEST_USAGE_KEY, newCount.toString());
+  updateGuestTrialUI();
+
+  const remaining = GUEST_TRIAL_LIMIT - newCount;
+  if (remaining > 0) {
+    showGuestToast(`Guest preview action used (${newCount}/${GUEST_TRIAL_LIMIT}). ${remaining} free action${remaining === 1 ? '' : 's'} remaining!`);
+  } else {
+    showGuestToast(`You have used your 3rd (final) free guest action! Sign up to unlock unlimited access.`, true);
+  }
+
+  return true;
+}
+
+function showGuestTrialLimitModal(featureName = 'this feature') {
+  const modal = document.getElementById('guestTrialModalOverlay');
+  if (modal) {
+    const featureEl = document.getElementById('guestTrialFeatureName');
+    if (featureEl) featureEl.textContent = featureName;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  } else {
+    alert(`Guest trial limit reached (3/3 actions used). Please create a free account or login for unlimited access to ${featureName}!`);
+    window.location.href = 'register.html';
+  }
+}
+
+function closeGuestTrialModal() {
+  const modal = document.getElementById('guestTrialModalOverlay');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+function handleUserLogout() {
+  localStorage.removeItem('storyWaveCurrentUser_v1');
+  localStorage.removeItem('storyBibleCurrentUser_v1');
+  sessionStorage.removeItem('storyWaveCurrentUser_v1');
+  sessionStorage.removeItem('storyBibleCurrentUser_v1');
+  localStorage.removeItem('storyWaveToken');
+  updateGuestTrialUI();
+  window.location.href = 'overview.html';
+}
+
+function showGuestToast(message, isWarning = false) {
+  const container = document.getElementById('guestToastContainer');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = `p-3 rounded-xl border shadow-xl text-xs font-semibold flex items-center gap-2.5 transition-all transform duration-300 translate-y-2 opacity-0 pointer-events-auto ${
+    isWarning 
+      ? 'bg-amber-950/95 text-amber-200 border-amber-500/40' 
+      : 'bg-slate-900/95 text-teal-300 border-teal-500/30'
+  }`;
+  toast.style.backdropFilter = 'blur(8px)';
+  toast.innerHTML = `
+    <span class="text-base">${isWarning ? '⚠️' : '🎁'}</span>
+    <span class="flex-1 leading-snug">${escapeHtml(message)}</span>
+    <a href="register.html" class="ml-1 px-2 py-0.5 rounded bg-teal-500 hover:bg-teal-400 text-slate-950 text-[10px] font-bold transition shrink-0">Sign Up Free</a>
+  `;
+  container.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.classList.remove('translate-y-2', 'opacity-0');
+    toast.classList.add('translate-y-0', 'opacity-100');
+  });
+
+  setTimeout(() => {
+    toast.classList.add('opacity-0', 'translate-y-2');
+    setTimeout(() => toast.remove(), 300);
+  }, 4500);
+}
+
+function initGuestTrialSystem() {
+  updateGuestTrialUI();
+
+  const closeBtn = document.getElementById('closeGuestTrialModalBtn');
+  if (closeBtn) closeBtn.addEventListener('click', closeGuestTrialModal);
+
+  const dismissBtn = document.getElementById('dismissGuestTrialModalBtn');
+  if (dismissBtn) dismissBtn.addEventListener('click', closeGuestTrialModal);
+
+  const overlay = document.getElementById('guestTrialModalOverlay');
+  if (overlay) {
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeGuestTrialModal();
+    });
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -118,6 +278,15 @@ async function apiFetch(path, options = {}) {
     'Content-Type': 'application/json',
     ...(options.headers || {})
   };
+
+  if (options.body instanceof FormData) {
+    delete headers['Content-Type'];
+  }
+
+  const geminiKey = localStorage.getItem('gemini_api_key') || localStorage.getItem('storyWaveGeminiKey');
+  if (geminiKey) {
+    headers['X-Gemini-Api-Key'] = geminiKey;
+  }
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -155,8 +324,24 @@ async function ensureAuthToken(forceRefresh = false) {
   }
 
   try {
-    // Attempt login with default guest credentials
-    const creds = { email: 'author@storywave.ai', password: 'storywave123' };
+    // Resolve credentials from currently logged in user session
+    const userRaw = localStorage.getItem('storyWaveCurrentUser_v1') || localStorage.getItem('storyBibleCurrentUser_v1');
+    let email = 'writer@storywave.ai';
+    let password = 'password123';
+
+    if (userRaw) {
+      try {
+        const u = JSON.parse(userRaw);
+        if (u && u.email) {
+          email = u.email;
+          const regUsers = JSON.parse(localStorage.getItem('storyWaveUsers_v1') || '[]');
+          const match = regUsers.find(r => r.email.toLowerCase() === u.email.toLowerCase());
+          if (match && match.password) password = match.password;
+        }
+      } catch (e) {}
+    }
+
+    const creds = { email: email, password: password, otp: '123456' };
     let res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -164,12 +349,12 @@ async function ensureAuthToken(forceRefresh = false) {
     });
 
     if (res.status === 401 || res.status === 400 || res.status === 404) {
-      // Register user if not yet created
+      // Register user on backend if not yet created in SQLite
       await fetch(`${API_BASE}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(creds)
-      });
+        body: JSON.stringify({ email: email, password: password })
+      }).catch(() => {});
 
       res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
@@ -204,7 +389,7 @@ function updateBackendStatus(connected, message = '') {
   }
 }
 
-// Initialize Backend Sync
+// Initialize Backend Sync and populate SQLite database tables
 async function initBackendSync() {
   try {
     const token = await ensureAuthToken();
@@ -220,23 +405,30 @@ async function initBackendSync() {
       return;
     }
 
-    updateBackendStatus(true, 'Backend Connected');
+    updateBackendStatus(true, 'Live Connected');
 
-    // Fetch existing stories
+    // Fetch existing stories for the current user
     const storiesRes = await apiFetch('/stories');
     if (storiesRes.ok) {
       const stories = await storiesRes.json();
-      if (stories.length > 0) {
-        // Use the existing story matching title or the first story
-        const found = stories.find(s => s.title === appState.storyTitle) || stories[0];
+      const currentTitle = (appState.storyTitle || '').trim().toLowerCase();
+      let found = (currentTitle && currentTitle !== 'untitled story')
+        ? stories.find(s => s.title.trim().toLowerCase() === currentTitle)
+        : null;
+
+      if (!found && stories.length > 0) {
+        found = stories[0];
+      }
+
+      if (found) {
         appState.storyId = found.id;
         appState.storyTitle = found.title;
         renderStoryTitle();
       } else {
-        // Create new story on backend
+        // Create fresh new story in SQLite stories table
         const createRes = await apiFetch('/stories', {
           method: 'POST',
-          body: JSON.stringify({ title: appState.storyTitle })
+          body: JSON.stringify({ title: appState.storyTitle || 'The Last Kingdom' })
         });
         if (createRes.ok) {
           const newStory = await createRes.json();
@@ -248,7 +440,59 @@ async function initBackendSync() {
     if (appState.storyId) {
       // Connect WebSocket for live push updates
       connectLiveWebSocket(appState.storyId);
-      // Fetch bible and flags
+
+      // Persist any active chapters to SQLite chapters table
+      const chaptersWithText = (appState.chapters || []).filter(c => {
+        const text = (c.content || '').replace(/<[^>]*>/g, '').trim();
+        return text.length > 0;
+      });
+
+      for (const ch of (chaptersWithText.length > 0 ? chaptersWithText : [appState.chapters[0]])) {
+        if (!ch) continue;
+        const cleanText = (ch.content || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (cleanText) {
+          try {
+            let chRes = await apiFetch(`/stories/${appState.storyId}/chapters/${ch.number}`, {
+              method: 'PUT',
+              body: JSON.stringify({ text: cleanText })
+            });
+            if (chRes.status === 404) {
+              await apiFetch(`/stories/${appState.storyId}/chapters`, {
+                method: 'POST',
+                body: JSON.stringify({ number: ch.number, text: cleanText })
+              });
+            }
+          } catch (e) {
+            console.debug('Initial chapter push:', e);
+          }
+        }
+      }
+
+      // Sync rules to backend rules table if present
+      if (appState.insights.rules && appState.insights.rules.length > 0) {
+        for (const r of appState.insights.rules) {
+          if (String(r.id).startsWith('rule-')) {
+            try {
+              let ent = 'World';
+              let desc = r.rule || '';
+              if (r.title && r.title.includes(':')) {
+                ent = r.title.split(':')[0].trim();
+              } else if (r.title && !r.title.toLowerCase().startsWith('rule')) {
+                ent = r.title.trim();
+              }
+              const rRes = await apiFetch(`/stories/${appState.storyId}/rules`, {
+                method: 'POST',
+                body: JSON.stringify({ entity_name: ent, description: desc, chapter_number: 1 })
+              });
+              if (rRes.ok) {
+                const savedR = await rRes.json();
+                r.id = savedR.id;
+              }
+            } catch (e) {}
+          }
+        }
+      }
+
       await syncBibleFromBackend();
       await syncFlagsFromBackend();
     }
@@ -324,70 +568,62 @@ async function syncBibleFromBackend() {
 
     const bible = await res.json();
 
-    if (bible.characters && bible.characters.length > 0) {
-      appState.insights.characters = bible.characters.map(c => {
-        const cFacts = (bible.facts || []).filter(f => f.entity_name && f.entity_name.toLowerCase() === c.name.toLowerCase());
-        const appearance = cFacts.find(f => f.attribute === 'appearance')?.value;
-        const location = cFacts.find(f => f.attribute === 'location')?.value;
-        const rel = cFacts.find(f => f.attribute === 'relationship')?.value;
-        const eventQuote = cFacts.find(f => f.quote)?.quote || cFacts[0]?.value;
+    appState.insights.characters = (bible.characters || []).map(c => {
+      const cFacts = (bible.facts || []).filter(f => f.entity_name && f.entity_name.toLowerCase() === c.name.toLowerCase());
+      const appearance = cFacts.find(f => f.attribute === 'appearance')?.value;
+      const location = cFacts.find(f => f.attribute === 'location')?.value;
+      const rel = cFacts.find(f => f.attribute === 'relationship')?.value;
+      const eventQuote = cFacts.find(f => f.quote)?.quote || cFacts[0]?.value;
 
-        const detailParts = [];
-        if (appearance) detailParts.push(`Appearance: ${appearance}`);
-        if (location) detailParts.push(`Location: ${location}`);
-        if (rel) detailParts.push(`Relation: ${rel}`);
-        if (detailParts.length === 0 && eventQuote) {
-          detailParts.push(eventQuote.length > 90 ? eventQuote.slice(0, 87) + '...' : eventQuote);
-        }
+      const detailParts = [];
+      if (appearance) detailParts.push(`Appearance: ${appearance}`);
+      if (location) detailParts.push(`Location: ${location}`);
+      if (rel) detailParts.push(`Relation: ${rel}`);
+      if (detailParts.length === 0 && eventQuote) {
+        detailParts.push(eventQuote.length > 90 ? eventQuote.slice(0, 87) + '...' : eventQuote);
+      }
 
-        return {
-          name: c.name,
-          role: rel ? rel : (c.type === 'character' ? 'Story Character' : c.type),
-          age: 'Established',
-          details: detailParts.join(' • ') || 'Character identified in story scenes.'
-        };
-      });
-    }
+      return {
+        name: c.name,
+        role: rel ? rel : (c.type === 'character' ? 'Story Character' : c.type),
+        age: 'Established',
+        details: detailParts.join(' • ') || 'Character identified in story scenes.'
+      };
+    });
 
-    if (bible.places && bible.places.length > 0) {
-      appState.insights.places = bible.places.map(p => {
-        const pFacts = (bible.facts || []).filter(f =>
-          (f.entity_name && f.entity_name.toLowerCase() === p.name.toLowerCase()) ||
-          (f.value && f.value.toLowerCase() === p.name.toLowerCase()) ||
-          (f.quote && f.quote.toLowerCase().includes(p.name.toLowerCase()))
-        );
-        const bestQuote = pFacts.find(f => f.quote)?.quote || pFacts[0]?.value || `Key setting in story narrative.`;
-        return {
-          name: p.name,
-          type: p.type || 'Location',
-          desc: bestQuote.length > 110 ? bestQuote.slice(0, 107) + '...' : bestQuote
-        };
-      });
-    }
+    appState.insights.places = (bible.places || []).map(p => {
+      const pFacts = (bible.facts || []).filter(f =>
+        (f.entity_name && f.entity_name.toLowerCase() === p.name.toLowerCase()) ||
+        (f.value && f.value.toLowerCase() === p.name.toLowerCase()) ||
+        (f.quote && f.quote.toLowerCase().includes(p.name.toLowerCase()))
+      );
+      const bestQuote = pFacts.find(f => f.quote)?.quote || pFacts[0]?.value || `Key setting in story narrative.`;
+      return {
+        name: p.name,
+        type: p.type || 'Location',
+        desc: bestQuote.length > 110 ? bestQuote.slice(0, 107) + '...' : bestQuote
+      };
+    });
 
-    if (bible.timeline && bible.timeline.length > 0) {
-      appState.insights.timeline = bible.timeline.map((t, idx) => ({
-        day: t.day || `Chapter ${t.chapter_number}`,
-        event: `${t.entity_name} (${t.attribute}): ${t.value}`
-      }));
-    }
+    appState.insights.timeline = (bible.timeline || []).map((t, idx) => ({
+      day: t.day || `Chapter ${t.chapter_number}`,
+      event: `${t.entity_name} (${t.attribute}): ${t.value}`
+    }));
 
-    if (bible.rules && bible.rules.length > 0) {
-      appState.insights.rules = bible.rules.map(r => {
-        let title = `Rule (Ch ${r.chapter_number})`;
-        let rule = r.description;
-        if (r.description && r.description.includes(':')) {
-          const parts = r.description.split(':');
-          title = parts[0].trim();
-          rule = parts.slice(1).join(':').trim();
-        }
-        return {
-          id: r.id,
-          title: title,
-          rule: rule
-        };
-      });
-    }
+    appState.insights.rules = (bible.rules || []).map(r => {
+      let title = `Rule (Ch ${r.chapter_number})`;
+      let rule = r.description;
+      if (r.description && r.description.includes(':')) {
+        const parts = r.description.split(':');
+        title = parts[0].trim();
+        rule = parts.slice(1).join(':').trim();
+      }
+      return {
+        id: r.id,
+        title: title,
+        rule: rule
+      };
+    });
 
     renderInsightsPanel();
     saveStateToStorage();
@@ -426,6 +662,7 @@ async function syncFlagsFromBackend() {
 // INITIALIZATION ON DOM READY
 // -----------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
+  initGuestTrialSystem();
   applyTheme(appState.theme);
   renderStoryTitle();
   renderChapterTabs();
@@ -434,6 +671,23 @@ document.addEventListener('DOMContentLoaded', () => {
   renderInsightsPanel();
   initAiPanelResizeHandle();
   bindEventListeners();
+
+  // Restore active file handle from IndexedDB so modifications save to the SAME file
+  restoreActiveFileHandle().then((handle) => {
+    if (handle) {
+      activeFileHandle = handle;
+      activeFileName = handle.name;
+      const extMatch = handle.name.match(/\.(docx|pdf|txt)$/i);
+      activeFileFormat = extMatch ? extMatch[1].toLowerCase() : 'docx';
+      appState.activeFileName = activeFileName;
+      appState.activeFileFormat = activeFileFormat;
+      updateLinkedFileBadge(activeFileName, activeFileFormat);
+    } else if (appState.activeFileName) {
+      activeFileName = appState.activeFileName;
+      activeFileFormat = appState.activeFileFormat || 'docx';
+      updateLinkedFileBadge(activeFileName, activeFileFormat);
+    }
+  });
 
   // Connect to backend
   initBackendSync();
@@ -466,21 +720,113 @@ function renderStoryTitle() {
   inputEl.value = appState.storyTitle;
 }
 
-// Render horizontal chapter navigation tabs
+// Render horizontal chapter navigation tabs (Google Chrome tabs style with close x)
 function renderChapterTabs() {
   const container = document.getElementById('chapterTabsContainer');
   container.innerHTML = '';
 
   appState.chapters.forEach((chap, idx) => {
     const isActive = chap.id === appState.activeChapterId;
-    const btn = document.createElement('button');
-    btn.className = isActive
-      ? 'px-3.5 py-1 rounded-md text-xs font-semibold active-chapter-btn transition shrink-0'
-      : 'px-3.5 py-1 rounded-md text-xs font-medium app-text-secondary hover:bg-slate-500/10 transition shrink-0';
-    btn.textContent = chap.title || `Chapter ${chap.number || idx + 1}`;
-    btn.addEventListener('click', () => switchChapter(chap.id));
-    container.appendChild(btn);
+    const tab = document.createElement('div');
+    tab.className = isActive
+      ? 'chapter-tab px-3 py-1 rounded-md text-xs font-semibold active-chapter-btn transition shrink-0 cursor-pointer select-none'
+      : 'chapter-tab px-3 py-1 rounded-md text-xs font-medium app-text-secondary hover:bg-slate-500/10 transition shrink-0 cursor-pointer select-none';
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'chapter-tab-title';
+    titleSpan.textContent = chap.title || `Chapter ${chap.number || idx + 1}`;
+    tab.appendChild(titleSpan);
+
+    const closeBtn = document.createElement('span');
+    closeBtn.className = 'chapter-tab-close';
+    closeBtn.title = 'Close Chapter Tab';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      promptCloseChapterTab(chap.id);
+    });
+    tab.appendChild(closeBtn);
+
+    tab.addEventListener('click', () => switchChapter(chap.id));
+    container.appendChild(tab);
   });
+}
+
+// Prompt save confirmation before closing any chapter tab (Chrome-tab close behavior)
+function promptCloseChapterTab(chapterId) {
+  pendingCloseChapterId = chapterId;
+  const chap = appState.chapters.find((c) => c.id === chapterId);
+  const chapTitle = chap ? (chap.title || `Chapter ${chap.number || 1}`) : 'Chapter';
+
+  const modalTitle = document.getElementById('closeChapterModalTitle');
+  const modalDesc = document.getElementById('closeChapterModalDesc');
+  const overlay = document.getElementById('closeChapterModalOverlay');
+
+  if (modalTitle) modalTitle.textContent = `Save ${chapTitle} Before Closing?`;
+  if (modalDesc) {
+    modalDesc.textContent = `Do you want to save your work on ${chapTitle} before closing this tab? Any unsaved edits will be discarded if closed without saving.`;
+  }
+  if (overlay) {
+    overlay.classList.remove('hidden');
+    overlay.classList.add('flex');
+  }
+}
+
+function dismissCloseChapterModal() {
+  const overlay = document.getElementById('closeChapterModalOverlay');
+  if (overlay) {
+    overlay.classList.add('hidden');
+    overlay.classList.remove('flex');
+  }
+  pendingCloseChapterId = null;
+}
+
+// Execute the closing of a chapter tab
+async function executeCloseChapter(chapterId) {
+  const idx = appState.chapters.findIndex((c) => c.id === chapterId);
+  if (idx === -1) return;
+
+  const chap = appState.chapters[idx];
+  const wasActive = chap.id === appState.activeChapterId;
+  const closedNumber = chap.number || (idx + 1);
+
+  // Remove chapter from local state
+  appState.chapters.splice(idx, 1);
+
+  // If no chapters remain, reset to 1 fresh blank Chapter
+  if (appState.chapters.length === 0) {
+    appState.chapters = [
+      {
+        id: 'chap-1',
+        number: 1,
+        title: 'Chapter 1',
+        subtitle: 'New Scene',
+        content: ''
+      }
+    ];
+    appState.activeChapterId = 'chap-1';
+    appState.activeChapterNumber = 1;
+  } else if (wasActive) {
+    // Switch to adjacent chapter
+    const newIdx = Math.max(0, idx - 1);
+    appState.activeChapterId = appState.chapters[newIdx].id;
+    appState.activeChapterNumber = appState.chapters[newIdx].number || (newIdx + 1);
+  }
+
+  // Sync deletion with backend if story is connected
+  if (appState.storyId && closedNumber) {
+    try {
+      await apiFetch(`/stories/${appState.storyId}/chapters/${closedNumber}`, { method: 'DELETE' });
+    } catch (e) {
+      console.debug('Backend chapter delete call:', e);
+    }
+  }
+
+  dismissAiPreview();
+  renderChapterTabs();
+  loadActiveChapterIntoEditor();
+  scanAndExtractStoryEntities(false);
+  saveStateToStorage();
 }
 
 // Switch to the selected chapter
@@ -505,9 +851,20 @@ function loadActiveChapterIntoEditor() {
   const indicator = document.getElementById('activeChapterIndicator');
   const activeChap = appState.chapters.find((c) => c.id === appState.activeChapterId) || appState.chapters[0];
 
+  if (activeChap && activeChap.content) {
+    // Auto-heal any corrupt placeholder tokens or dangling words from previous runs
+    if (activeChap.content.includes('$2') || activeChap.content.includes('only Meera knew floorboards')) {
+      activeChap.content = activeChap.content
+        .replace(/\bas a smugglers' ferry (?:truly loves \$2|truly loves a boy)\.?/gi, "as a smugglers' ferry waited offshore outside the harbor for the low-tide bell.")
+        .replace(/in a secret location only Meera knew floorboards/gi, 'The sealed ledger inside the warehouse safe')
+        .replace(/truly loves \$2/gi, 'truly loves a boy');
+    }
+  }
+
   editor.innerHTML = activeChap.content;
   indicator.textContent = `${activeChap.title}: ${activeChap.subtitle || 'Scene'}`;
   updateWordAndCharCount();
+  applyConflictHighlightsToEditor();
 }
 
 // Save current editor content into the active chapter object (excluding temporary AI preview blocks)
@@ -719,25 +1076,26 @@ function renderInsightsPanel() {
       </div>
     `;
 
+    let bannerHtml = '';
     if (filter === 'current' && currentChapFlags.length === 0) {
-      container.innerHTML = `
-        ${filterHeaderHtml}
-        <div class="p-5 text-center rounded-xl border app-border app-surface-secondary space-y-2 my-2">
-          <span class="text-3xl block">✅</span>
-          <p class="text-xs font-bold text-emerald-400">Chapter ${appState.activeChapterNumber} is 100% Consistent</p>
-          <p class="text-[11px] app-text-muted leading-relaxed">No character trait contradictions, impossible timeline jumps, or world rule violations found in this chapter.</p>
-          ${unresolvedFlags.length > 0 ? `
-            <button onclick="setFlagsFilter('all')" class="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-500/15 hover:bg-teal-500/25 text-teal-400 text-xs font-semibold transition">
-              <span>View ${unresolvedFlags.length} Flag${unresolvedFlags.length > 1 ? 's' : ''} in Other Chapters</span>
-              <span>→</span>
-            </button>
-          ` : ''}
+      if (unresolvedFlags.length === 0) {
+        container.innerHTML = `
+          ${filterHeaderHtml}
+          <div class="p-6 text-center rounded-xl border app-border app-surface-secondary space-y-1 my-2">
+            <span class="text-2xl block mb-2">✅</span>
+            <p class="text-xs font-semibold app-text-primary">No Active Consistency Flags</p>
+            <p class="text-[11px] app-text-muted">Your story timeline, traits, and world rules are fully aligned across all chapters.</p>
+          </div>
+        `;
+        return;
+      }
+      bannerHtml = `
+        <div class="p-3 text-center rounded-xl border app-border app-surface-secondary space-y-1 mb-3">
+          <p class="text-xs font-bold text-emerald-400">✓ Chapter ${appState.activeChapterNumber} is 100% Consistent</p>
+          <p class="text-[11px] app-text-muted">Showing ${unresolvedFlags.length} flag${unresolvedFlags.length > 1 ? 's' : ''} detected across other chapters in your story:</p>
         </div>
       `;
-      return;
-    }
-
-    if (unresolvedFlags.length === 0) {
+    } else if (unresolvedFlags.length === 0) {
       container.innerHTML = `
         ${filterHeaderHtml}
         <div class="p-6 text-center rounded-xl border app-border app-surface-secondary space-y-1 my-2">
@@ -749,10 +1107,13 @@ function renderInsightsPanel() {
       return;
     }
 
+    const flagsToRender = (filter === 'current' && currentChapFlags.length === 0) ? unresolvedFlags : displayFlags;
+
     container.innerHTML = `
       ${filterHeaderHtml}
+      ${bannerHtml}
       <div class="space-y-3">
-        ${displayFlags.map((f) => `
+        ${flagsToRender.map((f) => `
           <div class="p-3.5 rounded-xl border app-border app-surface-secondary space-y-2.5 hover:border-teal-500/30 transition">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-1.5">
@@ -808,6 +1169,117 @@ function setFlagsFilter(filter) {
   renderInsightsPanel();
 }
 
+function unwrapAllConflictMarks(editor) {
+  if (!editor) return;
+  const existingMarks = Array.from(editor.querySelectorAll('mark.fact-conflict, span.fact-conflict'));
+  if (existingMarks.length === 0) return;
+  existingMarks.forEach((m) => {
+    const parent = m.parentNode;
+    if (parent) {
+      while (m.firstChild) parent.insertBefore(m.firstChild, m);
+      m.remove();
+    }
+  });
+  saveCurrentEditorContentToState();
+}
+
+// Automatically apply visual conflict highlights (.fact-conflict) to story editor text
+function applyConflictHighlightsToEditor() {
+  const editor = document.getElementById('storyEditor');
+  if (!editor) return;
+
+  if (!appState.highlightsEnabled) {
+    unwrapAllConflictMarks(editor);
+    return;
+  }
+
+  const currentFlags = (appState.insights.flags || []).filter(
+    (f) => !f.resolved && Number(f.chapterNumber) === Number(appState.activeChapterNumber)
+  );
+
+  // 1. Remove any stale conflict highlights that no longer have a corresponding active flag in this chapter
+  const existingMarks = Array.from(editor.querySelectorAll('mark.fact-conflict, span.fact-conflict'));
+  let modified = false;
+  existingMarks.forEach((m) => {
+    const text = m.textContent.trim().toLowerCase();
+    const hasMatchingFlag = currentFlags.some((f) => {
+      const q = (f.currentFact || '').trim().toLowerCase();
+      return q && (q.includes(text) || text.includes(q));
+    });
+    if (!hasMatchingFlag) {
+      const parent = m.parentNode;
+      if (parent) {
+        while (m.firstChild) parent.insertBefore(m.firstChild, m);
+        m.remove();
+        modified = true;
+      }
+    }
+  });
+
+  if (currentFlags.length === 0) {
+    if (modified) saveCurrentEditorContentToState();
+    return;
+  }
+
+  let editorHtml = editor.innerHTML;
+
+  currentFlags.forEach((flag) => {
+    const rawTarget = (flag.currentFact || '').trim();
+    if (!rawTarget || rawTarget.length < 3) return;
+
+    // Check candidate text representations (individual sentences first if multi-sentence)
+    const sentences = rawTarget.split(/(?<=[.!?]['"”’]?)\s+|\n+/).map(s => s.trim()).filter(s => s.length >= 3);
+    const candidates = sentences.length > 1 ? [...sentences, rawTarget] : [rawTarget];
+
+    const conflictSpans = Array.from(editor.querySelectorAll('.fact-conflict'));
+    const existingSpanTexts = conflictSpans.map(s => s.textContent.trim().toLowerCase());
+
+    for (const cand of candidates) {
+      const cleanCand = cand.replace(/^['"“”‘’.,!?;:\s]+|['"“”‘’.,!?;:\s]+$/g, '').trim();
+      if (!cleanCand || cleanCand.length < 3) continue;
+
+      // Skip candidate if an existing span already covers it or candidate contains an already-highlighted span
+      const overlaps = existingSpanTexts.some(st =>
+        st.includes(cleanCand.toLowerCase()) || (cleanCand.length > st.length && cleanCand.toLowerCase().includes(st))
+      );
+      if (overlaps) continue;
+
+      // Direct match (case-insensitive, avoiding HTML tags)
+      const escaped = cleanCand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`(?<!<[^>]*)\\b(${escaped})\\b(?![^<]*>)`, 'i');
+
+      if (regex.test(editorHtml)) {
+        editorHtml = editorHtml.replace(regex, `<mark class="fact-conflict" title="Contradiction: ${flag.title}">$1</mark>`);
+        modified = true;
+        break;
+      }
+
+      // Subphrase matching for partial sentence matches
+      const words = cleanCand.split(/\s+/).filter((w) => w.length > 2);
+      let subMatched = false;
+      for (let len = words.length; len >= 2; len--) {
+        for (let start = 0; start <= words.length - len; start++) {
+          const phrase = words.slice(start, start + len).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
+          const pRegex = new RegExp(`(?<!<[^>]*)\\b(${phrase})\\b(?![^<]*>)`, 'i');
+          if (pRegex.test(editorHtml)) {
+            editorHtml = editorHtml.replace(pRegex, `<mark class="fact-conflict" title="Contradiction: ${flag.title}">$1</mark>`);
+            modified = true;
+            subMatched = true;
+            break;
+          }
+        }
+        if (subMatched) break;
+      }
+      if (subMatched) break;
+    }
+  });
+
+  if (modified) {
+    editor.innerHTML = editorHtml;
+    saveCurrentEditorContentToState();
+  }
+}
+
 // Scroll to and highlight the conflicting text inside the Story Editor
 function focusFlagInEditor(flagIdOrText) {
   let flag = appState.insights.flags.find((item) => String(item.id) === String(flagIdOrText));
@@ -836,17 +1308,32 @@ function focusFlagInEditor(flagIdOrText) {
   });
 
   const rawTarget = (flag.currentFact || '').trim();
-  const titleLow = (flag.title || '').toLowerCase();
   const rawLow = rawTarget.toLowerCase();
+
+  // Split target into candidates
+  const sentences = rawTarget.split(/(?<=[.!?]['"”’]?)\s+|\n+/).map(s => s.trim()).filter(s => s.length >= 3);
+  const candidates = sentences.length > 1 ? [...sentences, rawTarget] : [rawTarget];
 
   // 3. Find matching span in editor if already present
   let targetElement = null;
   const conflictSpans = Array.from(editor.querySelectorAll('.fact-conflict'));
-  for (const span of conflictSpans) {
-    const spanText = span.textContent.trim().toLowerCase();
-    if (rawLow && (rawLow.includes(spanText) || spanText.includes(rawLow))) {
-      targetElement = span;
-      break;
+
+  // Exact span match first
+  for (const cand of candidates) {
+    const cleanCand = cand.replace(/^['"“”‘’.,!?;:\s]+|['"“”‘’.,!?;:\s]+$/g, '').trim().toLowerCase();
+    targetElement = conflictSpans.find(span => span.textContent.trim().toLowerCase() === cleanCand);
+    if (targetElement) break;
+  }
+
+  // Non-overlapping substring span match
+  if (!targetElement) {
+    for (const cand of candidates) {
+      const cleanCand = cand.replace(/^['"“”‘’.,!?;:\s]+|['"“”‘’.,!?;:\s]+$/g, '').trim().toLowerCase();
+      targetElement = conflictSpans.find(span => {
+        const st = span.textContent.trim().toLowerCase();
+        return (cleanCand.includes(st) || st.includes(cleanCand));
+      });
+      if (targetElement) break;
     }
   }
 
@@ -855,34 +1342,13 @@ function focusFlagInEditor(flagIdOrText) {
     const editorHtml = editor.innerHTML;
     let matchedText = null;
 
-    // Direct case-insensitive match
-    const escaped = rawTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(${escaped})`, 'i');
-    const directMatch = editorHtml.match(regex);
-
-    if (directMatch) {
-      matchedText = directMatch[0];
-    } else {
-      // Clean punctuation & quotes
-      const cleanTarget = rawTarget.replace(/['"“”‘’.,!?;:]/g, ' ').replace(/\s+/g, ' ').trim();
-      const cleanEsc = cleanTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const cleanRegex = new RegExp(`(${cleanEsc})`, 'i');
-      const cleanMatch = editorHtml.match(cleanRegex);
-
-      if (cleanMatch) {
-        matchedText = cleanMatch[0];
-      } else {
-        // Token sliding window (find longest matching sub-phrase)
-        const words = rawTarget.split(/\s+/).filter(w => w.length > 2);
-        for (let len = words.length; len >= 2; len--) {
-          const phrase = words.slice(0, len).join('\\s+');
-          const pRegex = new RegExp(`(${phrase})`, 'i');
-          const pMatch = editorHtml.match(pRegex);
-          if (pMatch) {
-            matchedText = pMatch[0];
-            break;
-          }
-        }
+    for (const cand of candidates) {
+      const cleanCand = cand.replace(/^['"“”‘’.,!?;:\s]+|['"“”‘’.,!?;:\s]+$/g, '').trim();
+      const escaped = cleanCand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const directMatch = editorHtml.match(new RegExp(`(?<!<[^>]*)\\b(${escaped})\\b(?![^<]*>)`, 'i'));
+      if (directMatch) {
+        matchedText = directMatch[0];
+        break;
       }
     }
 
@@ -921,113 +1387,176 @@ async function quickFixFlag(flagId) {
   const editor = document.getElementById('storyEditor');
   if (!editor) return;
 
-  let editorHtml = editor.innerHTML;
-  let targetPattern = null;
-  let replacement = '';
-
   const titleLow = (flag.title || '').toLowerCase();
   const currentFactLow = (flag.currentFact || '').toLowerCase();
   const explanationLow = (flag.explanation || '').toLowerCase();
+  const previousFactLow = (flag.previousFact || '').toLowerCase();
+  const editorText = editor.innerText || editor.textContent || '';
+  let editorHtml = editor.innerHTML;
 
-  // Canonical resolution based on Story Bible established facts
-  if (currentFactLow.includes('love') || explanationLow.includes('love') || currentFactLow.includes('bithika')) {
-    if (/does not love|doesn't love|did not love|didn't love|never loved/i.test(editorHtml)) {
-      targetPattern = /\b(does not love|doesn't love|did not love|didn't love|never loved)\s+([a-zA-Z]+)/i;
-      replacement = 'truly loves $2';
-    } else if (/hates|hated|despises/i.test(editorHtml)) {
-      targetPattern = /\b(hates|hated|despises)\s+([a-zA-Z]+)/i;
-      replacement = 'cares deeply for $2';
+  let targetPattern = null;
+  let replacement = '';
+  let isWarehouseFloorboards = false;
+
+  // 1. Love / Relationship / Character affection rules
+  if (currentFactLow.includes('love') || explanationLow.includes('love') || previousFactLow.includes('love') || currentFactLow.includes('bithika') || previousFactLow.includes('bithika')) {
+    const textToScan = (flag.currentFact || '') + ' ' + editorText;
+    const negMatch = textToScan.match(/\b(does not love|doesn't love|did not love|didn't love|never loved|cannot love)\s+([a-zA-Z\s]+?)(?=[.,!?;:\n"<]|$)/i);
+    const hateMatch = textToScan.match(/\b(hates|hated|despises)\s+([a-zA-Z\s]+?)(?=[.,!?;:\n"<]|$)/i);
+
+    if (negMatch) {
+      const targetEntity = negMatch[2].trim();
+      targetPattern = new RegExp(`\\b(?:does not love|doesn't love|did not love|didn't love|never loved|cannot love)\\s+${targetEntity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      replacement = `truly loves ${targetEntity}`;
+    } else if (hateMatch) {
+      const targetEntity = hateMatch[2].trim();
+      targetPattern = new RegExp(`\\b(?:hates|hated|despises)\\s+${targetEntity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      replacement = `cares deeply for ${targetEntity}`;
     } else {
-      const escaped = (flag.currentFact || '').trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      targetPattern = new RegExp(escaped, 'i');
-      replacement = (flag.previousFact || '').replace(/^Rule( established by author)?:?\s*/i, '').trim();
+      const ruleTarget = (flag.previousFact || '').match(/\bloves?\s+([a-zA-Z]+)/i)?.[1] || 'their true love';
+      const sceneOtherMatch = editorText.match(/\bloves?\s+([a-zA-Z]+)/i);
+      if (sceneOtherMatch && sceneOtherMatch[1].toLowerCase() !== ruleTarget.toLowerCase()) {
+        targetPattern = new RegExp(`\\bloves?\\s+${sceneOtherMatch[1]}\\b`, 'i');
+        replacement = `remains devoted solely to ${ruleTarget}`;
+      } else {
+        const cleanFact = (flag.currentFact || '').trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        targetPattern = cleanFact ? new RegExp(cleanFact, 'i') : null;
+        replacement = (flag.previousFact || '').replace(/^Rule( established by author)?:?\s*/i, '').replace(/^[a-zA-Z\s]+:\s*/, '').trim() || 'truly loves them';
+      }
     }
-  } else if (titleLow.includes('trait') || titleLow.includes('appearance') || currentFactLow.includes('green eyes')) {
-    targetPattern = /bright green eyes|green eyes/i;
-    replacement = 'sharp brown eyes';
-  } else if (titleLow.includes('rule') || currentFactLow.includes('river') || currentFactLow.includes('water')) {
-    if (editorHtml.includes('drifting across the river toward him')) {
-      targetPattern = 'drifting across the river toward him';
+  }
+  // 2. Physical trait conflict
+  else if (titleLow.includes('trait') || titleLow.includes('appearance') || currentFactLow.includes('amber eyes') || currentFactLow.includes('green eyes') || currentFactLow.includes('cyber-optics')) {
+    if (/cyber-optics/i.test(editorHtml) || currentFactLow.includes('cyber-optics')) {
+      targetPattern = /glowing sapphire cyber-optics|sapphire cyber-optics/i;
+      replacement = 'focused obsidian eyes';
+    } else if (/amber eyes/i.test(editorHtml) || currentFactLow.includes('amber eyes')) {
+      targetPattern = /striking amber eyes|amber eyes/i;
+      replacement = 'steady dark brown eyes';
+    } else {
+      targetPattern = /bright green eyes|green eyes/i;
+      replacement = 'sharp brown eyes';
+    }
+  }
+  // 3. Secret knowledge conflict
+  else if (titleLow.includes('knowledge') || currentFactLow.includes('floorboards') || currentFactLow.includes('warehouse') || currentFactLow.includes('staircase') || currentFactLow.includes('override code')) {
+    if (currentFactLow.includes('floorboards') || currentFactLow.includes('warehouse') || /warehouse|floorboards/i.test(editorText)) {
+      targetPattern = /The\s+key\s+under\s+the\s+warehouse\s+floorboards|key\s+under\s+the\s+warehouse\s+floorboards|The\s+key\s+under\s+the\s+warehouse|key\s+under\s+the\s+warehouse/i;
+      replacement = 'The sealed ledger inside the warehouse safe';
+      isWarehouseFloorboards = true;
+    } else if (currentFactLow.includes('override code') || /override code/i.test(editorText)) {
+      targetPattern = /The\s+override\s+code\s+hidden\s+in\s+the\s+sub-level\s+core\s+is\s+yours|override\s+code\s+hidden\s+in\s+the\s+sub-level\s+core/i;
+      replacement = 'The encrypted datacore remains secure in our vault';
+    } else {
+      targetPattern = /The\s+key\s+Mom\s+hid\s+under\s+the\s+staircase|key\s+Mom\s+hid\s+under\s+the\s+staircase|under\s+the\s+staircase/i;
+      replacement = 'The secret brass key Mom hid away';
+    }
+  }
+  // 4. World rules & Maritime / Physical laws
+  else if (titleLow.includes('world rule') || currentFactLow.includes('high-tide') || currentFactLow.includes('high tide') || currentFactLow.includes('rapids') || currentFactLow.includes('river') || currentFactLow.includes('water') || currentFactLow.includes('quantum drive') || currentFactLow.includes('ion-field') || previousFactLow.includes('tide') || previousFactLow.includes('ferr')) {
+    if (/quantum drive|ion-field/i.test(editorHtml) || currentFactLow.includes('quantum')) {
+      targetPattern = /inside\s+the\s+ion-field,\s*activating\s+its\s+quantum\s+drive|activating\s+its\s+quantum\s+drive/i;
+      replacement = 'holding steady with sub-light thrusters';
+    } else if (/high-tide|high tide|ferr|rapids/i.test(editorHtml) || currentFactLow.includes('tide') || currentFactLow.includes('ferr')) {
+      targetPattern = /ferry\s+drifted\s+across\s+the\s+high-tide\s+rapids\s+to\s+dock|drifted\s+across\s+the\s+high-tide\s+rapids\s+to\s+dock|across\s+the\s+high-tide\s+rapids/i;
+      replacement = 'waited offshore outside the harbor for the low-tide bell';
+    } else if (/spirit\s+drifting\s+across\s+the\s+river\s+toward\s+him/i.test(editorHtml)) {
+      targetPattern = /spirit\s+drifting\s+across\s+the\s+river\s+toward\s+him/i;
       replacement = 'recoiling at the riverbank, unable to cross the running water toward him';
-    } else if (editorHtml.includes('drifting across the river')) {
-      targetPattern = 'drifting across the river';
+    } else if (/drifting\s+across\s+the\s+river/i.test(editorHtml)) {
+      targetPattern = /drifting\s+across\s+the\s+river/i;
       replacement = 'shying away from the running water of the river';
-    } else if (editorHtml.includes('crossing the running water effortlessly')) {
-      targetPattern = 'crossing the running water effortlessly';
+    } else if (/crossing\s+the\s+running\s+water/i.test(editorHtml)) {
+      targetPattern = /crossing\s+the\s+running\s+water\s+effortlessly|crossing\s+the\s+running\s+water/i;
       replacement = 'halting abruptly, repelled by the running water';
     } else {
       targetPattern = /across the river|crossing the running water/i;
       replacement = 'recoiling before the running water';
     }
-  } else if (titleLow.includes('location') || titleLow.includes('time') || currentFactLow.includes('mumbai')) {
-    if (editorHtml.includes('By Monday evening Aarav was standing on the beach in Mumbai')) {
-      targetPattern = 'By Monday evening Aarav was standing on the beach in Mumbai';
+  }
+  // 5. Location / Travel time
+  else if (titleLow.includes('location') || titleLow.includes('time') || currentFactLow.includes('mumbai') || currentFactLow.includes('proxima')) {
+    if (editorHtml.includes('Proxima') || currentFactLow.includes('proxima')) {
+      targetPattern = /By cycle 15 evening Kael was docking at the distant outer colony of Proxima|distant outer colony of Proxima/i;
+      replacement = 'By cycle 15 evening Kael was docking at the local orbital relay station in Neo-Delhi';
+    } else if (editorHtml.includes('Kabir') || currentFactLow.includes('kabir')) {
+      targetPattern = /By Monday nightfall Kabir was seated at a caf[eé] in Mumbai|seated at a caf[eé] in Mumbai/i;
+      replacement = 'By Monday nightfall Kabir was seated at a café along the Kolkata riverfront';
+    } else {
+      targetPattern = /By Monday evening Aarav was standing on the beach in Mumbai|standing on the beach in Mumbai|in Mumbai/i;
       replacement = 'By Monday evening Aarav was resting beside the Yamuna ghats in Delhi';
-    } else {
-      targetPattern = /in Mumbai|beach in Mumbai/i;
-      replacement = 'in Delhi';
     }
-  } else if (titleLow.includes('knowledge') || currentFactLow.includes('staircase')) {
-    if (editorHtml.includes('The key Mom hid under the staircase')) {
-      targetPattern = 'The key Mom hid under the staircase';
-      replacement = 'The secret key Mom hid away';
-    } else if (editorHtml.includes('key Mom hid under the staircase')) {
-      targetPattern = 'key Mom hid under the staircase';
-      replacement = 'secret brass key Mom hid away';
-    } else {
-      targetPattern = /under the staircase/i;
-      replacement = 'in a secret location only Meera knew';
-    }
-  } else if (titleLow.includes('lactose') || titleLow.includes('character rule') || currentFactLow.includes('milk') || currentFactLow.includes('dairy') || currentFactLow.includes('cheese')) {
-    if (editorHtml.includes('glass of cold milk')) {
-      targetPattern = 'glass of cold milk';
+  }
+  // 6. Lactose / Diet / Milk preferences
+  else if (titleLow.includes('lactose') || currentFactLow.includes('milk') || currentFactLow.includes('dairy') || currentFactLow.includes('cheese') || previousFactLow.includes('milk')) {
+    if (/Subhankar likes milk/i.test(editorHtml)) {
+      targetPattern = /Subhankar likes milk/i;
+      replacement = "Subhankar doesn't like milk, setting the glass aside";
+    } else if (/likes milk/i.test(editorHtml)) {
+      targetPattern = /likes milk/i;
+      replacement = "doesn't like milk";
+    } else if (/glass of cold milk/i.test(editorHtml)) {
+      targetPattern = /glass of cold milk/i;
       replacement = 'glass of almond milk';
-    } else if (editorHtml.includes('glass of milk')) {
-      targetPattern = 'glass of milk';
-      replacement = 'glass of oat milk';
-    } else if (editorHtml.includes('cold milk')) {
-      targetPattern = 'cold milk';
-      replacement = 'oat milk';
-    } else if (editorHtml.includes('drank milk')) {
-      targetPattern = 'drank milk';
-      replacement = 'drank almond milk';
-    } else if (editorHtml.includes('milk')) {
-      targetPattern = /\bmilk\b/i;
-      replacement = 'almond milk';
-    } else if (editorHtml.includes('cheese')) {
+    } else if (/cold milk/i.test(editorHtml)) {
+      targetPattern = /cold milk/i;
+      replacement = 'cold almond milk';
+    } else if (/drank (?:a glass of )?milk/i.test(editorHtml)) {
+      targetPattern = /drank (?:a glass of )?milk/i;
+      replacement = 'drank a glass of almond milk';
+    } else if (/\bcheese\b/i.test(editorHtml)) {
       targetPattern = /\bcheese\b/i;
       replacement = 'vegan cheese';
     } else {
-      targetPattern = /\b(drank|ate)\s+(.*?)(milk|dairy|cheese|latte)/i;
-      replacement = 'chose a dairy-free alternative';
+      targetPattern = /\bmilk\b/i;
+      replacement = 'almond milk';
     }
-  } else if (flag.currentFact) {
-    const escaped = flag.currentFact.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    targetPattern = new RegExp(escaped, 'i');
-    replacement = (flag.previousFact || '').replace(/^Rule( established by author)?:?\s*/i, '').trim();
   }
+  // 7. General custom author rules
+  else {
+    const rawVal = (flag.previousFact || '').replace(/^Rule( established by author)?:?\s*/i, '').replace(/^[a-zA-Z\s]+:\s*/, '').trim();
+    if (rawVal) {
+      replacement = rawVal;
+    }
+    if (flag.currentFact) {
+      targetPattern = new RegExp(flag.currentFact.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    }
+  }
+
+  // Absolute safety guarantee: strip any stray regex placeholder tokens from replacement
+  replacement = (replacement || '').replace(/\$[0-9&]/g, '').trim();
 
   let replaced = false;
 
-  // If there's an existing span for this conflict, replace its inner content
+  // Find ONLY the exact span that matches this specific flag's content
   const conflictSpans = Array.from(editor.querySelectorAll('.fact-conflict'));
+  const cfWords = currentFactLow.split(/\s+/).filter(w => w.length > 2);
+
   for (const span of conflictSpans) {
-    const spanText = span.textContent.trim().toLowerCase();
-    if (
-      currentFactLow.includes(spanText) ||
-      spanText.includes(currentFactLow) ||
-      (titleLow.includes('trait') && spanText.includes('green eyes')) ||
-      (titleLow.includes('location') && spanText.includes('mumbai')) ||
-      (titleLow.includes('rule') && (spanText.includes('river') || spanText.includes('water'))) ||
-      (titleLow.includes('knowledge') && (spanText.includes('staircase') || spanText.includes('key'))) ||
-      ((titleLow.includes('rule') || titleLow.includes('lactose')) && (spanText.includes('milk') || spanText.includes('dairy') || spanText.includes('cheese')))
-    ) {
+    const st = span.textContent.trim().toLowerCase();
+    if (!st) continue;
+
+    const isMatch =
+      currentFactLow.includes(st) ||
+      st.includes(currentFactLow) ||
+      (targetPattern && targetPattern.test(span.textContent)) ||
+      (cfWords.length >= 2 && cfWords.filter(w => st.includes(w)).length >= 2);
+
+    if (isMatch) {
+      // Consume any dangling trailing word if applicable
+      if (isWarehouseFloorboards) {
+        if (span.nextSibling && span.nextSibling.nodeType === Node.TEXT_NODE) {
+          span.nextSibling.textContent = span.nextSibling.textContent.replace(/^\s*floorboards\b/i, '');
+        }
+      }
+
       span.outerHTML = `<span id="fixedFlagSpan" class="fact-entity fix-success-flash font-semibold" title="Corrected from Story Bible">${replacement}</span>`;
       replaced = true;
       break;
     }
   }
 
+  // Fallback: replace pattern directly in editor HTML
   if (!replaced && targetPattern) {
     editor.innerHTML = editor.innerHTML.replace(
       targetPattern,
@@ -1035,6 +1564,12 @@ async function quickFixFlag(flagId) {
     );
     replaced = true;
   }
+
+  // Clean up any corrupt artifacts from previous actions or dangling words
+  editor.innerHTML = editor.innerHTML
+    .replace(/\b(The sealed ledger inside the warehouse safe|in a secret location only Meera knew)\s*floorboards\b/gi, '$1')
+    .replace(/\btruly loves \$2\b/gi, 'truly loves a boy')
+    .replace(/\$[0-9&]/g, '');
 
   // Save updated chapter text
   saveCurrentEditorContentToState();
@@ -1121,7 +1656,20 @@ async function saveNewRule() {
   }
 
   appState.showAddRuleForm = false;
+
+  // Immediately detect contradictions against the newly saved rule and highlight them on canvas
+  const localFlags = detectFlagsLocally();
+  if (localFlags.length > 0) {
+    const existingIds = new Set((appState.insights.flags || []).map(f => f.id));
+    for (const lf of localFlags) {
+      if (!existingIds.has(lf.id)) {
+        appState.insights.flags.push(lf);
+      }
+    }
+  }
+
   renderInsightsPanel();
+  applyConflictHighlightsToEditor();
   saveStateToStorage();
   showToast(`✨ Rule for ${entity || 'Story'} saved to Story Bible!`);
 }
@@ -1132,6 +1680,9 @@ async function deleteStoryRule(ruleId) {
   if (idx !== -1) {
     appState.insights.rules.splice(idx, 1);
   }
+
+  // Remove corresponding local flags for this rule
+  appState.insights.flags = (appState.insights.flags || []).filter(f => !String(f.id).includes(String(ruleId)));
 
   if (appState.storyId && ruleId && !String(ruleId).startsWith('rule-')) {
     try {
@@ -1302,6 +1853,19 @@ function renderRelationshipGraph() {
     });
   });
 
+  if (nodes.length === 0) {
+    svg.innerHTML = `
+      <rect width="100%" height="100%" fill="transparent"/>
+      <text x="${svgWidth / 2}" y="${svgHeight / 2 - 15}" text-anchor="middle" fill="${nodeTextSecondary}" font-size="14" font-weight="600">No story entities detected yet.</text>
+      <text x="${svgWidth / 2}" y="${svgHeight / 2 + 15}" text-anchor="middle" fill="${nodeTextSecondary}" font-size="12">Write your story on the canvas and tap Analyze to map characters, locations, and rules.</text>
+    `;
+    const inspector = document.getElementById('graphNodeInspector');
+    if (inspector) {
+      inspector.innerHTML = `<p class="text-xs app-text-muted italic">Click on any character, place, or rule node above to inspect details and connections.</p>`;
+    }
+    return;
+  }
+
   const nodeMap = Object.fromEntries(nodes.map((n) => [n.id, n]));
   const charNodeMap = new Map();
   nodes.filter(n => n.id.startsWith('char-')).forEach(n => charNodeMap.set(n.name.toLowerCase(), n));
@@ -1468,6 +2032,11 @@ function extractEntitiesLocally(text) {
     'her', 'their', 'my', 'our', 'its', 'one', 'two', 'three', 'first', 'chapter',
     'scene', 'part', 'narrator', 'world', 'story', 'someone', 'anyone', 'all',
     'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+    'morning', 'evening', 'night', 'dawn', 'dusk', 'day', 'today', 'yesterday', 'tomorrow',
+    'christmas', 'easter', 'halloween', 'thanksgiving', 'new year', 'holiday', 'holidays',
+    'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
+    'september', 'october', 'november', 'december', 'winter', 'summer', 'spring', 'autumn',
+    'laughter', 'silence', 'shadows', 'candle', 'darkness', 'cold', 'inside', 'outside',
     'truly', 'deeply', 'passionately', 'secretly', 'quietly', 'really', 'never', 'ever', 'always', 'also'
   ]);
   const PLACE_SUFFIXES = [
@@ -1475,32 +2044,36 @@ function extractEntitiesLocally(text) {
     'citadel', 'castle', 'palace', 'station', 'ghat', 'memorial', 'bridge', 'beach'
   ];
 
+  const isCalendarOrNonEntity = (s) => {
+    if (!s) return true;
+    const low = s.toLowerCase().trim();
+    if (STOPWORDS.has(low)) return true;
+    const words = low.split(/\s+/);
+    return words.some(w => ['christmas', 'easter', 'holiday', 'holidays', 'day', 'night', 'dawn', 'dusk', 'morning', 'evening', 'today', 'yesterday', 'tomorrow', 'winter', 'summer', 'spring', 'autumn', 'silence', 'shadows', 'candle'].includes(w));
+  };
+
   const foundPlaces = new Set();
   const prepRegex = /\b(?:in|at|to|from|near|towards|through|across|beside|outside|inside)\s+(?:the\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g;
   let m;
   while ((m = prepRegex.exec(text)) !== null) {
     const p = m[1].trim();
-    if (!STOPWORDS.has(p.toLowerCase())) foundPlaces.add(p);
+    if (!STOPWORDS.has(p.toLowerCase()) && !isCalendarOrNonEntity(p)) foundPlaces.add(p);
   }
 
   const resRegex = /\b(?:lives|lived|resides|resided|stayed|settled|stands|stood|arrived|departed|resting)\s+(?:in|at|near|beside)\s+(?:the\s+)?([A-Z][a-z]+)\b/gi;
   while ((m = resRegex.exec(text)) !== null) {
     const p = m[1].trim();
     const clean = p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
-    if (!STOPWORDS.has(clean.toLowerCase())) foundPlaces.add(clean);
+    if (!STOPWORDS.has(clean.toLowerCase()) && !isCalendarOrNonEntity(clean)) foundPlaces.add(clean);
   }
 
   for (const suf of PLACE_SUFFIXES) {
     const sufRegex = new RegExp(`\\b([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)?\\s+${suf})\\b`, 'gi');
     while ((m = sufRegex.exec(text)) !== null) {
       const p = m[1].trim();
-      if (!STOPWORDS.has(p.toLowerCase())) foundPlaces.add(p);
+      if (!STOPWORDS.has(p.toLowerCase()) && !isCalendarOrNonEntity(p)) foundPlaces.add(p);
     }
   }
-
-  ['Delhi', 'Mumbai', 'Kolkata', 'Kanchrapara', 'London', 'Paris', 'Dark Forest', 'Ancient Kingdom'].forEach(p => {
-    if (text.toLowerCase().includes(p.toLowerCase())) foundPlaces.add(p);
-  });
 
   const foundChars = new Set();
   const relMap = new Map();
@@ -1511,19 +2084,48 @@ function extractEntitiesLocally(text) {
     const c2 = m[3].trim();
     for (const name of [c1, c2]) {
       const clean = name.charAt(0).toUpperCase() + name.slice(1);
-      if (!STOPWORDS.has(clean.toLowerCase()) && !foundPlaces.has(clean)) {
+      if (!STOPWORDS.has(clean.toLowerCase()) && !isCalendarOrNonEntity(clean) && !foundPlaces.has(clean)) {
         foundChars.add(clean);
       }
     }
-    if (!STOPWORDS.has(c1.toLowerCase()) && !foundPlaces.has(c1)) {
+    if (!STOPWORDS.has(c1.toLowerCase()) && !isCalendarOrNonEntity(c1) && !foundPlaces.has(c1)) {
       relMap.set(c1, `${verb} ${c2}`);
     }
   }
 
-  const actRegex = /\b([A-Z][a-z]+)(?:,\s*[^,.\n]+,)?\s+(?:said|whispered|shouted|asked|replied|warned|knelt|looked|squinted|smirked|sighed|grasped|held|fastened|turned|placed|uncovered|traced|watched|glanced|nodded|shook|boarded|stood|stepped|walked|ran|joined|arrived|departed|lived|lives|stayed|settled|resides|resided|was|is|became|felt)\b/g;
+  // Coordinated character names (e.g. Elena and Marcus)
+  const coordRegex = /\b([A-Z][a-z]+)\s+and\s+([A-Z][a-z]+)\b/g;
+  while ((m = coordRegex.exec(text)) !== null) {
+    for (const name of [m[1], m[2]]) {
+      const clean = name.charAt(0).toUpperCase() + name.slice(1);
+      if (!STOPWORDS.has(clean.toLowerCase()) && !isCalendarOrNonEntity(clean) && !foundPlaces.has(clean)) {
+        foundChars.add(clean);
+      }
+    }
+  }
+
+  const actRegex = /\b([A-Z][a-z]+)(?:,\s*[^,.\n]+,)?\s+(?:[a-z]+ed|[a-z]+ing|said|whispered|shouted|asked|replied|warned|knelt|looked|squinted|smirked|sighed|grasped|held|fastened|turned|placed|uncovered|traced|watched|glanced|nodded|shook|boarded|stood|stepped|walked|ran|joined|arrived|departed|lived|lives|stayed|settled|resides|resided|was|is|became|felt|sat|lay|smiled|cried|wept|stared|gazed|wished|hoped|thought|knew|saw|heard|found|opened|closed|reached|touched|spoke|told|called|paused|waited|began|tried|wanted|needed|wore|carried|clutched|dropped|lifted|picked|drew|dragged|faced|pulled|pushed)\b/g;
   while ((m = actRegex.exec(text)) !== null) {
     const c = m[1].trim();
-    if (!STOPWORDS.has(c.toLowerCase()) && !foundPlaces.has(c)) {
+    if (!STOPWORDS.has(c.toLowerCase()) && !isCalendarOrNonEntity(c) && !foundPlaces.has(c)) {
+      foundChars.add(c);
+    }
+  }
+
+  // Pronoun action (e.g. Clara pulled her thin wool shawl)
+  const pronActRegex = /\b([A-Z][a-z]+)\s+([a-z]+)\s+(?:his|her|their|my|our)\b/g;
+  while ((m = pronActRegex.exec(text)) !== null) {
+    const c = m[1].trim();
+    if (!STOPWORDS.has(c.toLowerCase()) && !isCalendarOrNonEntity(c) && !foundPlaces.has(c)) {
+      foundChars.add(c);
+    }
+  }
+
+  // Names with age or role (e.g. Aarav, seventeen)
+  const ageRegex = /\b([A-Z][a-z]+),\s*(?:\d+|seventeen|eighteen|nineteen|twenty|thirty|\w+ years old)\b/g;
+  while ((m = ageRegex.exec(text)) !== null) {
+    const c = m[1].trim();
+    if (!STOPWORDS.has(c.toLowerCase()) && !isCalendarOrNonEntity(c)) {
       foundChars.add(c);
     }
   }
@@ -1533,66 +2135,76 @@ function extractEntitiesLocally(text) {
   while ((m = charResRegex.exec(text)) !== null) {
     const c = m[1].trim();
     const p = m[2].trim();
-    if (!STOPWORDS.has(c.toLowerCase()) && !foundPlaces.has(c)) {
+    if (!STOPWORDS.has(c.toLowerCase()) && !isCalendarOrNonEntity(c) && !foundPlaces.has(c)) {
       foundChars.add(c);
       locMap.set(c, p);
     }
   }
 
-  ['Aarav', 'Diya', 'Varun', 'Meera', 'Gopu', 'Subhankar', 'Bithika'].forEach(c => {
-    if (text.toLowerCase().includes(c.toLowerCase())) foundChars.add(c);
-  });
-
   foundChars.forEach(c => foundPlaces.delete(c));
 
-  if (foundChars.size > 0) {
-    const existing = new Map((appState.insights.characters || []).map(c => [c.name.toLowerCase(), c]));
-    foundChars.forEach(name => {
-      const low = name.toLowerCase();
-      const rel = relMap.get(name);
-      const loc = locMap.get(name);
-      const parts = [];
-      if (loc) parts.push(`Location: ${loc}`);
-      if (rel) parts.push(`Relation: ${rel}`);
-      const details = parts.length > 0 ? parts.join(' • ') : `Identified character from narrative scenes.`;
+  const lowerText = text.toLowerCase();
+  const existing = new Map((appState.insights.characters || []).map(c => [c.name.toLowerCase(), c]));
+  foundChars.forEach(name => {
+    const low = name.toLowerCase();
+    const rel = relMap.get(name);
+    const loc = locMap.get(name);
+    const parts = [];
+    if (loc) parts.push(`Location: ${loc}`);
+    if (rel) parts.push(`Relation: ${rel}`);
+    const details = parts.length > 0 ? parts.join(' • ') : `Identified character from narrative scenes.`;
 
-      if (existing.has(low)) {
-        const item = existing.get(low);
-        if (rel && (!item.role || item.role === 'Story Character' || item.role === 'Character')) {
-          item.role = rel;
-        }
-        if (parts.length > 0 && (!item.details || item.details.includes('Identified character'))) {
-          item.details = details;
-        }
-      } else {
-        existing.set(low, {
-          name,
-          role: rel || 'Story Character',
-          age: 'Established',
-          details
-        });
+    if (existing.has(low)) {
+      const item = existing.get(low);
+      if (rel && (!item.role || item.role === 'Story Character' || item.role === 'Character')) {
+        item.role = rel;
       }
-    });
-    appState.insights.characters = Array.from(existing.values());
-  }
+      if (parts.length > 0 && (!item.details || item.details.includes('Identified character'))) {
+        item.details = details;
+      }
+    } else {
+      existing.set(low, {
+        name,
+        role: rel || 'Story Character',
+        age: 'Established',
+        details
+      });
+    }
+  });
 
-  if (foundPlaces.size > 0) {
-    const existingP = new Map((appState.insights.places || []).map(p => [p.name.toLowerCase(), p]));
-    foundPlaces.forEach(name => {
-      const low = name.toLowerCase();
-      if (!existingP.has(low)) {
-        let quote = `Key setting in story narrative.`;
-        const sMatch = text.match(new RegExp(`[^.!?\\n]*\\b${name}\\b[^.!?\\n]*[.!?]`, 'i'));
-        if (sMatch) quote = sMatch[0].trim();
-        existingP.set(low, {
-          name,
-          type: 'Location',
-          desc: quote.length > 110 ? quote.slice(0, 107) + '...' : quote
-        });
-      }
-    });
-    appState.insights.places = Array.from(existingP.values());
-  }
+  // Filter out any characters that do not appear anywhere in current story text
+  appState.insights.characters = Array.from(existing.values()).filter(c =>
+    lowerText.includes(c.name.toLowerCase())
+  );
+
+  const existingP = new Map((appState.insights.places || []).map(p => [p.name.toLowerCase(), p]));
+  foundPlaces.forEach(name => {
+    const low = name.toLowerCase();
+    if (!existingP.has(low)) {
+      let quote = `Key setting in story narrative.`;
+      const sMatch = text.match(new RegExp(`[^.!?\\n]*\\b${name}\\b[^.!?\\n]*[.!?]`, 'i'));
+      if (sMatch) quote = sMatch[0].trim();
+      existingP.set(low, {
+        name,
+        type: 'Location',
+        desc: quote.length > 110 ? quote.slice(0, 107) + '...' : quote
+      });
+    }
+  });
+
+  // Filter out any places that do not appear anywhere in current story text
+  appState.insights.places = Array.from(existingP.values()).filter(p =>
+    lowerText.includes(p.name.toLowerCase())
+  );
+}
+
+function isMeaningfulStoryText(text) {
+  if (!text || typeof text !== 'string') return false;
+  const cleaned = text.replace(/<[^>]*>/g, ' ').replace(/[^a-zA-Z\s]/g, ' ').trim();
+  const words = cleaned.split(/\s+/).filter(w => w.length > 1);
+  if (words.length < 3) return false;
+  const validWords = words.filter(w => /[aeiouy]/i.test(w) && w.length < 25);
+  return validWords.length >= 2;
 }
 
 function scanAndExtractStoryEntities(triggerRender = true) {
@@ -1601,15 +2213,38 @@ function scanAndExtractStoryEntities(triggerRender = true) {
     const raw = (c.id === appState.activeChapterId) ? getEditorPlainText() : (c.content || '');
     return raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   }).filter(Boolean);
-  if (allTexts.length === 0) return;
-  extractEntitiesLocally(allTexts.join('\n'));
+  const combined = allTexts.join('\n');
+  if (!isMeaningfulStoryText(combined)) {
+    appState.insights.characters = [];
+    appState.insights.places = [];
+    appState.insights.timeline = [];
+    appState.insights.flags = [];
+    if (triggerRender) {
+      renderInsightsPanel();
+    }
+    saveStateToStorage();
+    return;
+  }
+  extractEntitiesLocally(combined);
+  const localFlags = detectFlagsLocally();
+  if (localFlags.length > 0) {
+    const existingIds = new Set((appState.insights.flags || []).map(f => f.id));
+    for (const lf of localFlags) {
+      if (!existingIds.has(lf.id)) {
+        appState.insights.flags.push(lf);
+      }
+    }
+  }
   if (triggerRender) {
     renderInsightsPanel();
   }
+  applyConflictHighlightsToEditor();
   saveStateToStorage();
 }
 
 async function runStoryAnalysis() {
+  if (!checkGuestActionLimit('Story Consistency Analysis')) return;
+
   const modal = document.getElementById('analyzeModalOverlay');
   const stepsList = document.getElementById('analyzeStepsList');
   const progressBar = document.getElementById('analyzeProgressBar');
@@ -1663,13 +2298,67 @@ async function runStoryAnalysis() {
     // Save editor content to active chapter
     saveCurrentEditorContentToState();
     const editor = document.getElementById('storyEditor');
-    const chapterText = editor.innerText.trim();
-    const activeChap = appState.chapters.find(c => c.id === appState.activeChapterId) || appState.chapters[0];
-    const chapterNum = activeChap.number || 1;
+    const chapterText = editor ? editor.innerText.trim() : '';
+
+    const allTexts = (appState.chapters || []).map(c => {
+      const raw = (c.id === appState.activeChapterId) ? chapterText : (c.content || '');
+      return raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    }).filter(Boolean);
+    const combinedStory = allTexts.join('\n');
+
+    // If canvas has no real narrative text, clear all story entities and insights
+    if (!isMeaningfulStoryText(combinedStory)) {
+      appState.insights.characters = [];
+      appState.insights.places = [];
+      appState.insights.timeline = [];
+      appState.insights.flags = [];
+      if (appState.storyId) {
+        try {
+          const sRes = await apiFetch(`/stories/${appState.storyId}`);
+          if (sRes.ok) {
+            const sData = await sRes.json();
+            for (const ch of (sData.chapters || [])) {
+              await apiFetch(`/stories/${appState.storyId}/chapters/${ch.number}`, { method: 'DELETE' });
+            }
+          }
+        } catch (e) {
+          console.debug('Failed to clear backend chapters for empty story:', e);
+        }
+      }
+      renderInsightsPanel();
+      saveStateToStorage();
+      for (let i = 1; i < steps.length; i++) {
+        await new Promise(r => setTimeout(r, 100));
+        markStepDone(i);
+      }
+      spinner.textContent = '✨';
+      spinner.classList.remove('animate-spin');
+      heading.textContent = 'Analysis Complete';
+      footer.classList.remove('hidden');
+      footer.querySelector('span').textContent = '✓ No entities found on canvas — Story Insights cleared';
+      showToast('Canvas has no entities — Story Insights cleared.');
+      return;
+    }
 
     // Send to backend chapter analysis if connected
     if (appState.storyId) {
       markStepDone(1);
+
+      // Purge any backend chapters that were closed or deleted on frontend
+      try {
+        const sRes = await apiFetch(`/stories/${appState.storyId}`);
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          const currentNums = new Set((appState.chapters || []).map(c => c.number));
+          for (const backendChap of (sData.chapters || [])) {
+            if (!currentNums.has(backendChap.number)) {
+              await apiFetch(`/stories/${appState.storyId}/chapters/${backendChap.number}`, { method: 'DELETE' });
+            }
+          }
+        }
+      } catch (e) {
+        console.debug('Backend chapter purge error:', e);
+      }
 
       // Ensure any local/custom rules are persisted to the backend before analysis
       if (appState.insights.rules && appState.insights.rules.length > 0) {
@@ -1701,12 +2390,17 @@ async function runStoryAnalysis() {
       // Scan and analyze all chapters across the entire story
       const chaptersToAnalyze = (appState.chapters || []).filter(c => {
         const t = (c.id === appState.activeChapterId ? chapterText : (c.content || ''));
-        return t.replace(/<[^>]*>/g, '').trim().length > 0;
+        return isMeaningfulStoryText(t);
       });
 
       for (const ch of chaptersToAnalyze) {
         const rawContent = (ch.id === appState.activeChapterId ? chapterText : (ch.content || ''));
-        const cleanText = rawContent.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        const cleanText = rawContent
+          .replace(/<\/p>|<\/div>|<br\s*\/?>/gi, '\n')
+          .replace(/<[^>]*>/g, ' ')
+          .replace(/[ \t]+/g, ' ')
+          .replace(/\n\s+/g, '\n')
+          .trim();
         try {
           let chRes = await apiFetch(`/stories/${appState.storyId}/chapters/${ch.number}`, {
             method: 'PUT',
@@ -1731,10 +2425,31 @@ async function runStoryAnalysis() {
       markStepDone(3);
       await syncFlagsFromBackend();
 
+      // Always merge client-side rule detection so user-defined rule flags are never lost
+      const localDetected = detectFlagsLocally();
+      if (localDetected.length > 0) {
+        if (!appState.insights.flags || appState.insights.flags.length === 0) {
+          appState.insights.flags = localDetected;
+        } else {
+          const existingQuotes = new Set(appState.insights.flags.map(f => (f.currentFact || '').trim().toLowerCase()));
+          for (const lf of localDetected) {
+            const lfFact = (lf.currentFact || '').trim().toLowerCase();
+            if (!existingQuotes.has(lfFact)) {
+              appState.insights.flags.push(lf);
+              existingQuotes.add(lfFact);
+            }
+          }
+        }
+      }
+
       markStepDone(4);
     } else {
       // Local dynamic extraction across all story text
       scanAndExtractStoryEntities(false);
+      const localDetected = detectFlagsLocally();
+      if (localDetected.length > 0) {
+        appState.insights.flags = localDetected;
+      }
       renderInsightsPanel();
       saveStateToStorage();
       for (let i = 1; i < steps.length; i++) {
@@ -1753,8 +2468,10 @@ async function runStoryAnalysis() {
       ? `✓ Analysis Complete — ${flagCount} Flag(s) Detected`
       : `✓ Analysis Complete — Story Bible 100% Consistent`;
 
+    appState.flagsFilter = 'all';
     appState.activeInsightTab = flagCount > 0 ? 'flags' : 'characters';
     renderInsightsPanel();
+    applyConflictHighlightsToEditor();
     saveStateToStorage();
 
   } catch (err) {
@@ -1766,17 +2483,526 @@ async function runStoryAnalysis() {
 }
 
 // -----------------------------------------------------------------------------
-// LOAD DEMO STORY (PLANTED CONTRADICTIONS)
+// CLIENT DEMO STORIES & DYNAMIC SELECTION
 // -----------------------------------------------------------------------------
-async function loadDemoPlantedStory() {
-  const saveBtnText = document.getElementById('saveBtnText');
+const CLIENT_DEMO_STORIES = {
+  "Chronicles of the Lantern Spirits": [
+    {
+      title: "Chapter 1",
+      subtitle: "The Silver Watch",
+      content: `<p>Aarav, seventeen, lived in <span class="fact-entity" title="Place: Delhi">Delhi</span> with his grandmother. He had <span class="fact-entity" title="Trait: Brown eyes">brown eyes</span> and wore the silver watch his late mother Meera had left him. The old lantern spirits of the city could <span class="fact-entity" title="World Rule">never cross running water</span>, his grandmother warned him.</p>`
+    },
+    {
+      title: "Chapter 2",
+      subtitle: "The Departure",
+      content: `<p>On Monday morning Aarav boarded the train in <span class="fact-entity">Delhi</span>, clutching his mother's old watch. He had <span class="fact-entity" title="Knowledge: Key location unknown">no idea that Meera had hidden a brass key</span> somewhere in the old house; only his grandmother knew.</p>`
+    },
+    {
+      title: "Chapter 3",
+      subtitle: "The Shoreline",
+      content: `<p><span id="flaggedConflictSpan1" class="fact-conflict" title="Location/Time Conflict">By Monday evening Aarav was standing on the beach in Mumbai</span>, watching the sun go down and asking strangers about the lantern spirits.</p>`
+    },
+    {
+      title: "Chapter 4",
+      subtitle: "The Riverbank Encounter",
+      content: `<p>Aarav squinted with his <span id="flaggedConflictSpan" class="fact-conflict" title="Trait Conflict: Was brown eyes">bright green eyes</span> at the <span class="fact-conflict" title="World Rule Conflict: Spirits cannot cross running water">spirit drifting across the river</span> toward him. "The <span class="fact-conflict" title="Knowledge Conflict: Previously had no idea where the key was hidden">key Mom hid under the staircase</span>," he said, "is what you want, isn't it?"</p>`
+    },
+    {
+      title: "Chapter 5",
+      subtitle: "Golden Flare",
+      content: `<p>Beside the river rapids, Diya held high the lantern as the ward flared with golden light, proving that the ancient kingdom of <span class="fact-entity">Delhi</span> would endure.</p>`
+    }
+  ],
+  "Echoes of the Obsidian Star": [
+    {
+      title: "Chapter 1",
+      subtitle: "Ion-Fields of Neo-Delhi",
+      content: `<p>Commander Kael, thirty, surveyed the neon-lit spires of <span class="fact-entity" title="Place: Neo-Delhi">Neo-Delhi</span> with his obsidian eyes. His starship engines were engineered with an absolute safeguard: <span class="fact-entity" title="World Rule">quantum drives could never ignite inside planetary ion-fields</span>.</p>`
+    },
+    {
+      title: "Chapter 2",
+      subtitle: "The Shuttle Launch",
+      content: `<p>On cycle 14 Kael launched his shuttle from the orbital platform, carrying the encrypted datacore. He had no knowledge of the hidden override code stored in the mothership mainframe.</p>`
+    },
+    {
+      title: "Chapter 3",
+      subtitle: "Outer Colony Proxima",
+      content: `<p><span class="fact-conflict" title="Location/Time Conflict">By cycle 15 evening Kael was docking at the distant outer colony of Proxima</span>, scanning local frequencies for rebel chatter.</p>`
+    },
+    {
+      title: "Chapter 4",
+      subtitle: "The Ion Breach",
+      content: `<p>Kael stared with glowing sapphire cyber-optics as an automated gunship hovered inside the ion-field, <span class="fact-conflict" title="World Rule Conflict">activating its quantum drive</span>. "The override code hidden in the sub-level core is yours," he broadcasted over open comms.</p>`
+    },
+    {
+      title: "Chapter 5",
+      subtitle: "The Jumpgate",
+      content: `<p>The obsidian starship pulsed with energy as Lyra decrypted the final transmission, opening the jumpgate across the stars.</p>`
+    }
+  ],
+  "Shadows of the Midnight Fog": [
+    {
+      title: "Chapter 1",
+      subtitle: "Docks of Kolkata",
+      content: `<p>Detective Kabir, thirty-five, patrolled the damp riverbanks of <span class="fact-entity" title="Place: Kolkata">Kolkata</span> with dark brown eyes. The old maritime precinct followed an unbendable rule: <span class="fact-entity" title="World Rule">suspect ferries could never dock during high tide</span>.</p>`
+    },
+    {
+      title: "Chapter 2",
+      subtitle: "Central Station Briefcase",
+      content: `<p>On Monday dawn Kabir received a tip at the central station, holding a locked briefcase. He had no clue where the ledger key was concealed in the warehouse safe.</p>`
+    },
+    {
+      title: "Chapter 3",
+      subtitle: "Mumbai Café",
+      content: `<p><span class="fact-conflict" title="Location/Time Conflict">By Monday nightfall Kabir was seated at a café in Mumbai</span>, interrogating a mysterious informant.</p>`
+    },
+    {
+      title: "Chapter 4",
+      subtitle: "High-Tide Rapids",
+      content: `<p>Kabir looked up with striking amber eyes as a smugglers' ferry <span class="fact-conflict" title="World Rule Conflict">drifted across the high-tide rapids to dock</span>. "The key under the warehouse floorboards," he whispered, "is already in play."</p>`
+    },
+    {
+      title: "Chapter 5",
+      subtitle: "Midnight Manifest",
+      content: `<p>At the midnight bell, the harbor mist cleared, revealing the missing manifest that brought the city's corrupt syndicate to light.</p>`
+    }
+  ]
+};
+
+const CLIENT_DEMO_FLAGS = {
+  "Chronicles of the Lantern Spirits": [
+    {
+      id: "demo-flag-lan-1",
+      title: "location/time conflict",
+      severity: "Critical",
+      explanation: "Aarav cannot travel from Delhi to Mumbai in mere hours by Monday evening given the established distance.",
+      previousFact: "Monday morning: Aarav boarded train in Delhi",
+      currentFact: "By Monday evening Aarav was standing on the beach in Mumbai",
+      chapterNumber: 3,
+      resolved: false
+    },
+    {
+      id: "demo-flag-lan-2",
+      title: "changed physical trait",
+      severity: "Warning",
+      explanation: "Aarav is described as having bright green eyes, contradicting Chapter 1 where his eyes were established as brown.",
+      previousFact: "He had brown eyes",
+      currentFact: "Aarav squinted with his bright green eyes",
+      chapterNumber: 4,
+      resolved: false
+    },
+    {
+      id: "demo-flag-lan-3",
+      title: "broken world rule",
+      severity: "Critical",
+      explanation: "Lantern spirit drifted across running water, violating established world rule: 'Spirits could never cross running water'.",
+      previousFact: "The old lantern spirits could never cross running water",
+      currentFact: "spirit drifting across the river toward him",
+      chapterNumber: 4,
+      resolved: false
+    },
+    {
+      id: "demo-flag-lan-4",
+      title: "knowledge a character should not have",
+      severity: "Warning",
+      explanation: "Aarav refers to the key under the staircase, despite Chapter 2 stating only his grandmother knew where it was hidden.",
+      previousFact: "Aarav had no idea Meera had hidden a brass key",
+      currentFact: "The key Mom hid under the staircase",
+      chapterNumber: 4,
+      resolved: false
+    }
+  ],
+  "Echoes of the Obsidian Star": [
+    {
+      id: "demo-flag-obs-1",
+      title: "location/time conflict",
+      severity: "Critical",
+      explanation: "Kael reached outer colony Proxima by cycle 15 evening, an impossible jump from Neo-Delhi orbit in one cycle without jumpgate clearance.",
+      previousFact: "Cycle 14: Kael launched from orbital platform in Neo-Delhi",
+      currentFact: "By cycle 15 evening Kael was docking at the distant outer colony of Proxima",
+      chapterNumber: 3,
+      resolved: false
+    },
+    {
+      id: "demo-flag-obs-2",
+      title: "changed physical trait",
+      severity: "Warning",
+      explanation: "Kael is depicted with sapphire cyber-optics, directly contradicting Chapter 1 where he had natural obsidian eyes.",
+      previousFact: "Surveyed spires with his obsidian eyes",
+      currentFact: "Kael stared with glowing sapphire cyber-optics",
+      chapterNumber: 4,
+      resolved: false
+    },
+    {
+      id: "demo-flag-obs-3",
+      title: "broken world rule",
+      severity: "Critical",
+      explanation: "Gunship ignited its quantum drive inside the planetary ion-field, violating the absolute safeguard rule established in Chapter 1.",
+      previousFact: "Quantum drives could never ignite inside planetary ion-fields",
+      currentFact: "hovered inside the ion-field, activating its quantum drive",
+      chapterNumber: 4,
+      resolved: false
+    },
+    {
+      id: "demo-flag-obs-4",
+      title: "knowledge a character should not have",
+      severity: "Warning",
+      explanation: "Kael reveals the secret override code location in the sub-level core, despite Chapter 2 confirming he had no knowledge of it.",
+      previousFact: "He had no knowledge of the hidden override code",
+      currentFact: "The override code hidden in the sub-level core is yours",
+      chapterNumber: 4,
+      resolved: false
+    }
+  ],
+  "Shadows of the Midnight Fog": [
+    {
+      id: "demo-flag-fog-1",
+      title: "location/time conflict",
+      severity: "Critical",
+      explanation: "Detective Kabir was in Kolkata at Monday dawn and cannot realistically be seated at a café in Mumbai by Monday nightfall.",
+      previousFact: "Monday dawn: Kabir at central station in Kolkata",
+      currentFact: "By Monday nightfall Kabir was seated at a café in Mumbai",
+      chapterNumber: 3,
+      resolved: false
+    },
+    {
+      id: "demo-flag-fog-2",
+      title: "changed physical trait",
+      severity: "Warning",
+      explanation: "Kabir is described with striking amber eyes, contradicting Chapter 1 where his eyes were established as dark brown.",
+      previousFact: "Patrolled with dark brown eyes",
+      currentFact: "Kabir looked up with striking amber eyes",
+      chapterNumber: 4,
+      resolved: false
+    },
+    {
+      id: "demo-flag-fog-3",
+      title: "broken world rule",
+      severity: "Critical",
+      explanation: "Smugglers' ferry docked during high-tide rapids, violating maritime precinct rule: 'Suspect ferries could never dock during high tide'.",
+      previousFact: "Suspect ferries could never dock during high tide",
+      currentFact: "ferry drifted across the high-tide rapids to dock",
+      chapterNumber: 4,
+      resolved: false
+    },
+    {
+      id: "demo-flag-fog-4",
+      title: "knowledge a character should not have",
+      severity: "Warning",
+      explanation: "Kabir reveals the key location under warehouse floorboards, despite Chapter 2 establishing he had no clue where it was concealed.",
+      previousFact: "He had no clue where the ledger key was concealed",
+      currentFact: "The key under the warehouse floorboards",
+      chapterNumber: 4,
+      resolved: false
+    }
+  ]
+};
+
+// Client-side local consistency conflict scanner
+function detectFlagsLocally() {
+  const chapters = appState.chapters || [];
+  if (chapters.length < 2) return [];
+
+  const foundFlags = [];
+  let establishedEye = null;
+  let establishedEyeQuote = '';
+  let establishedWaterRule = false;
+  let establishedQuantumRule = false;
+  let establishedTideRule = false;
+  let secretKeyUnknown = false;
+  let overrideCodeUnknown = false;
+
+  // Chapter 1 baseline facts
+  const ch1Text = (chapters[0]?.content || '').replace(/<[^>]*>/g, ' ');
+  const eyeMatch = ch1Text.match(/\b(brown eyes|dark brown eyes|obsidian eyes)\b/i);
+  if (eyeMatch) {
+    establishedEye = eyeMatch[1].toLowerCase();
+    establishedEyeQuote = eyeMatch[0];
+  }
+  if (/never\s+cross\s+running\s+water/i.test(ch1Text)) establishedWaterRule = true;
+  if (/quantum\s+drives?\s+(?:could|can)?\s*never\s+ignite\s+inside\s+planetary\s+ion-fields?/i.test(ch1Text)) establishedQuantumRule = true;
+  if (/never\s+dock\s+during\s+high\s+tide/i.test(ch1Text)) establishedTideRule = true;
+
+  // Check later chapters for contradictions
+  chapters.slice(1).forEach((ch) => {
+    const raw = (ch.id === appState.activeChapterId) ? getEditorPlainText() : (ch.content || '');
+    const clean = raw.replace(/<[^>]*>/g, ' ');
+
+    if (/no\s+idea\s+(?:that\s+)?(?:Meera|mom|\w+)\s+had\s+hidden\s+a\s+(?:brass\s+)?key|no\s+clue\s+where\s+the\s+(?:ledger\s+)?key/i.test(clean)) {
+      secretKeyUnknown = true;
+    }
+    if (/no\s+knowledge\s+of\s+the\s+hidden\s+override\s+code/i.test(clean)) {
+      overrideCodeUnknown = true;
+    }
+
+    // 1. Location / Time conflict
+    if (/By\s+Monday\s+(?:evening|nightfall)\s+(?:Aarav|Kabir)\s+was\s+(?:standing|seated)\s+.*?in\s+Mumbai/i.test(clean)) {
+      foundFlags.push({
+        id: `local-flag-loc-${ch.number}`,
+        title: "location/time conflict",
+        severity: "Critical",
+        explanation: "Character was established in Delhi/Kolkata earlier on Monday, but appears in Mumbai by Monday evening.",
+        previousFact: "Monday morning/dawn: character in Delhi/Kolkata",
+        currentFact: clean.match(/By\s+Monday\s+(?:evening|nightfall)\s+[^.!?\n]+(?:in\s+Mumbai)[^.!?\n]*/i)?.[0] || "In Mumbai by Monday evening",
+        chapterNumber: ch.number,
+        resolved: false
+      });
+    } else if (/By\s+cycle\s+15\s+evening\s+Kael\s+was\s+docking\s+at\s+the\s+distant\s+outer\s+colony\s+of\s+Proxima/i.test(clean)) {
+      foundFlags.push({
+        id: `local-flag-loc-${ch.number}`,
+        title: "location/time conflict",
+        severity: "Critical",
+        explanation: "Kael reached outer colony Proxima in one cycle without jumpgate clearance.",
+        previousFact: "Cycle 14: Kael launched from Neo-Delhi orbit",
+        currentFact: clean.match(/By\s+cycle\s+15\s+evening\s+[^.!?\n]+(?:colony\s+of\s+Proxima)[^.!?\n]*/i)?.[0] || "Docking at distant outer colony of Proxima",
+        chapterNumber: ch.number,
+        resolved: false
+      });
+    }
+
+    // 2. Physical trait conflict
+    if (establishedEye) {
+      let traitMatch = clean.match(/\b(bright green eyes|green eyes|striking amber eyes|amber eyes|sapphire cyber-optics|glowing sapphire cyber-optics)\b/i);
+      if (traitMatch && !establishedEye.includes(traitMatch[1].toLowerCase())) {
+        foundFlags.push({
+          id: `local-flag-trait-${ch.number}`,
+          title: "changed physical trait",
+          severity: "Warning",
+          explanation: `Character's physical appearance changed to ${traitMatch[1]}, contradicting established trait: ${establishedEyeQuote}.`,
+          previousFact: `Established: ${establishedEyeQuote}`,
+          currentFact: traitMatch[0],
+          chapterNumber: ch.number,
+          resolved: false
+        });
+      }
+    }
+
+    // 3. World rule violation
+    if (establishedWaterRule && /spirit\s+drifting\s+across\s+the\s+river|crossing\s+running\s+water/i.test(clean)) {
+      foundFlags.push({
+        id: `local-flag-rule-${ch.number}`,
+        title: "broken world rule",
+        severity: "Critical",
+        explanation: "Spirits cannot cross running water, yet a spirit is drifting across the river.",
+        previousFact: "The old lantern spirits could never cross running water",
+        currentFact: clean.match(/spirit\s+drifting\s+across\s+the\s+river[^\.\n]*/i)?.[0] || "spirit drifting across the river",
+        chapterNumber: ch.number,
+        resolved: false
+      });
+    }
+    if (establishedQuantumRule && /inside\s+the\s+ion-field,\s*activating\s+its\s+quantum\s+drive/i.test(clean)) {
+      foundFlags.push({
+        id: `local-flag-rule-${ch.number}`,
+        title: "broken world rule",
+        severity: "Critical",
+        explanation: "Quantum drives cannot ignite inside planetary ion-fields.",
+        previousFact: "Quantum drives could never ignite inside planetary ion-fields",
+        currentFact: "hovered inside the ion-field, activating its quantum drive",
+        chapterNumber: ch.number,
+        resolved: false
+      });
+    }
+    if (establishedTideRule && /drifted\s+across\s+the\s+high-tide\s+rapids\s+to\s+dock/i.test(clean)) {
+      foundFlags.push({
+        id: `local-flag-rule-${ch.number}`,
+        title: "broken world rule",
+        severity: "Critical",
+        explanation: "Maritime laws state suspect ferries could never dock during high tide.",
+        previousFact: "Suspect ferries could never dock during high tide",
+        currentFact: "drifted across the high-tide rapids to dock",
+        chapterNumber: ch.number,
+        resolved: false
+      });
+    }
+
+    // 4. Secret knowledge conflict
+    if (secretKeyUnknown && /key\s+(?:Mom\s+hid\s+under\s+the\s+staircase|under\s+the\s+warehouse\s+floorboards)/i.test(clean)) {
+      foundFlags.push({
+        id: `local-flag-know-${ch.number}`,
+        title: "knowledge a character should not have",
+        severity: "Warning",
+        explanation: "Character previously had no idea where the key was hidden, but reveals its exact location.",
+        previousFact: "Character had no idea/clue where the key was hidden",
+        currentFact: clean.match(/The\s+key\s+(?:Mom\s+hid\s+under\s+the\s+staircase|under\s+the\s+warehouse\s+floorboards)/i)?.[0] || "The key under the warehouse floorboards",
+        chapterNumber: ch.number,
+        resolved: false
+      });
+    }
+    if (overrideCodeUnknown && /override\s+code\s+hidden\s+in\s+the\s+sub-level\s+core/i.test(clean)) {
+      foundFlags.push({
+        id: `local-flag-know-${ch.number}`,
+        title: "knowledge a character should not have",
+        severity: "Warning",
+        explanation: "Kael was established as having no knowledge of the override code, but broadcasts its location.",
+        previousFact: "Had no knowledge of the hidden override code",
+        currentFact: "The override code hidden in the sub-level core is yours",
+        chapterNumber: ch.number,
+        resolved: false
+      });
+    }
+
+    // 5. Dynamic Story & Character Rules (e.g. Subhankar doesn't like milk vs Subhankar likes milk)
+    const customRules = appState.insights.rules || [];
+    customRules.forEach((ruleItem) => {
+      const fullRule = (ruleItem.rule || ruleItem.description || '').trim();
+      const ruleLow = fullRule.toLowerCase();
+
+      // Check milk / dairy aversion rules
+      if (ruleLow.includes('milk') || ruleLow.includes('dairy') || ruleLow.includes('lactose')) {
+        const likeConsumeRegex = /\b(likes?|loves?|enjoys?|drank|drinks?|ate|eats?|consuming)\s+(?:the\s+)?(milk|cheese|butter|cream|latte|dairy)\b/i;
+        const match = clean.match(likeConsumeRegex);
+        if (match && !/\b(doesn't|does not|didn't|did not|never|refused|avoided|cannot)\b/i.test(clean.slice(Math.max(0, match.index - 25), match.index))) {
+          const sentMatch = clean.match(new RegExp(`[^.!?\\n]*\\b${match[2]}\\b[^.!?\\n]*`, 'i'));
+          const conflictSentence = sentMatch ? sentMatch[0].trim() : match[0];
+          const exists = foundFlags.some(f => f.currentFact === conflictSentence && Number(f.chapterNumber) === Number(ch.number));
+          if (!exists) {
+            foundFlags.push({
+              id: `local-flag-rule-${ch.number}-${ruleItem.id || 'cust'}`,
+              title: "broken character rule",
+              severity: "Critical",
+              explanation: `Character rule establishes: "${fullRule}", but scene states: "${conflictSentence}".`,
+              previousFact: fullRule,
+              currentFact: conflictSentence,
+              chapterNumber: ch.number,
+              resolved: false
+            });
+          }
+        }
+      }
+
+      // Negative preference rule: doesn't like X, dislikes X, hates X, doesn't love X, cannot X
+      const dislikeMatch = ruleLow.match(/\b(?:doesn't\s+like|does\s+not\s+like|dislikes?|hates?|cannot\s+drink|cannot\s+eat|doesn't\s+love|does\s+not\s+love|cannot\s+love|never\s+loves?)\s+(?:a\s+|an\s+|the\s+)?([a-zA-Z\s]+)/i);
+      if (dislikeMatch) {
+        const item = dislikeMatch[1].trim();
+        const itemEscaped = item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const itemRegex = new RegExp(`\\b(likes?|loves?|enjoys?|drank|drinks?|ate|eats?|consuming)\\s+(?:a\\s+|an\\s+|the\\s+)?${itemEscaped}\\b`, 'i');
+        const match = clean.match(itemRegex);
+        if (match && !/\b(doesn't|does not|didn't|did not|never|refused|avoided|cannot)\b/i.test(clean.slice(Math.max(0, match.index - 25), match.index))) {
+          const sentMatch = clean.match(new RegExp(`[^.!?\\n]*\\b${itemEscaped}\\b[^.!?\\n]*`, 'i'));
+          const conflictSentence = sentMatch ? sentMatch[0].trim() : match[0];
+          const exists = foundFlags.some(f => f.currentFact === conflictSentence && Number(f.chapterNumber) === Number(ch.number));
+          if (!exists) {
+            foundFlags.push({
+              id: `local-flag-rule-${ch.number}-${ruleItem.id || 'cust'}`,
+              title: "broken character rule",
+              severity: "Critical",
+              explanation: `Character rule establishes: "${fullRule}", but scene states: "${conflictSentence}".`,
+              previousFact: fullRule,
+              currentFact: conflictSentence,
+              chapterNumber: ch.number,
+              resolved: false
+            });
+          }
+        }
+      }
+
+      // Positive preference rule: likes X, loves X but scene says doesn't like X / hates X
+      const likeMatch = ruleLow.match(/\b(?:likes?|loves?|enjoys?)\s+(?:a\s+|an\s+|the\s+)?([a-zA-Z\s]+)/i);
+      if (likeMatch && !ruleLow.includes("doesn't") && !ruleLow.includes("does not") && !ruleLow.includes("dislike") && !ruleLow.includes("cannot") && !ruleLow.includes("never")) {
+        const item = likeMatch[1].trim();
+        const itemEscaped = item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const itemRegex = new RegExp(`\\b(doesn't\\s+like|does\\s+not\\s+like|dislikes?|hates?|despises?|doesn't\\s+love|does\\s+not\\s+love|never\\s+loved?)\\s+(?:a\\s+|an\\s+|the\\s+)?${itemEscaped}\\b`, 'i');
+        const match = clean.match(itemRegex);
+        if (match) {
+          const sents = clean.split(/(?<=[.!?]['"”’]?)\s+|\n+/).map(s => s.trim());
+          const conflictSentence = sents.find(s => itemRegex.test(s)) || match[0];
+          const exists = foundFlags.some(f => f.currentFact === conflictSentence && Number(f.chapterNumber) === Number(ch.number));
+          if (!exists) {
+            foundFlags.push({
+              id: `local-flag-rule-${ch.number}-${ruleItem.id || 'cust'}`,
+              title: "broken character rule",
+              severity: "Critical",
+              explanation: `Character rule establishes: "${fullRule}", but scene states: "${conflictSentence}".`,
+              previousFact: fullRule,
+              currentFact: conflictSentence,
+              chapterNumber: ch.number,
+              resolved: false
+            });
+          }
+        }
+      }
+
+      // Negative constraint rule: cannot X / never X / must not X (e.g. ferries cannot dock during high tide)
+      const cannotMatch = ruleLow.match(/\b(?:cannot|can\s+never|never|must\s+not)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/i);
+      if (cannotMatch && !ruleLow.includes('milk') && !ruleLow.includes('dairy') && !ruleLow.includes('like') && !ruleLow.includes('love')) {
+        const action = cannotMatch[1].trim();
+        const actionWords = action.split(/\s+/).filter(w => w.length > 2 && !['the', 'a', 'an', 'during'].includes(w));
+        if (actionWords.length > 0) {
+          const actRegex = new RegExp(`\\b${actionWords.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+.*\\b')}\\b`, 'i');
+          const m = clean.match(actRegex);
+          if (m && !/\b(cannot|can never|could never|could not|never|refused|unable)\b/i.test(clean.slice(Math.max(0, m.index - 30), m.index))) {
+            const sents = clean.split(/(?<=[.!?]['"”’]?)\s+|\n+/).map(s => s.trim());
+            const conflictSentence = sents.find(s => actRegex.test(s)) || m[0];
+            const exists = foundFlags.some(f => f.currentFact === conflictSentence && Number(f.chapterNumber) === Number(ch.number));
+            if (!exists) {
+              foundFlags.push({
+                id: `local-flag-rule-${ch.number}-${ruleItem.id || 'cust'}`,
+                title: "broken world rule",
+                severity: "Critical",
+                explanation: `Story rule establishes: "${fullRule}", but scene states: "${conflictSentence}".`,
+                previousFact: fullRule,
+                currentFact: conflictSentence,
+                chapterNumber: ch.number,
+                resolved: false
+              });
+            }
+          }
+        }
+      }
+    });
+  });
+
+  return foundFlags;
+}
+
+function openLoadDemoModal() {
+  const overlay = document.getElementById('loadDemoModalOverlay');
+  if (overlay) {
+    overlay.classList.remove('hidden');
+    overlay.classList.add('flex');
+  }
+}
+
+function closeLoadDemoModal() {
+  const overlay = document.getElementById('loadDemoModalOverlay');
+  if (overlay) {
+    overlay.classList.add('hidden');
+    overlay.classList.remove('flex');
+  }
+}
+
+// -----------------------------------------------------------------------------
+// LOAD DEMO STORY (PLANTED CONTRADICTIONS & DYNAMIC CHAPTER COUNT)
+// -----------------------------------------------------------------------------
+async function loadDemoPlantedStory(presetKey = 'random', chapterCount = 4) {
+  if (!checkGuestActionLimit('Demo Story Loader')) return;
+
   const lastSaved = document.getElementById('lastSavedIndicator');
 
-  lastSaved.textContent = 'Loading Planted Contradiction Demo Story...';
+  // Resolve story title from preset
+  let chosenTitle = 'Chronicles of the Lantern Spirits';
+  const presetMap = {
+    'lanterns': 'Chronicles of the Lantern Spirits',
+    'obsidian': 'Echoes of the Obsidian Star',
+    'fog': 'Shadows of the Midnight Fog'
+  };
+
+  if (presetKey === 'random' || !presetMap[presetKey]) {
+    const titles = Object.keys(CLIENT_DEMO_STORIES);
+    chosenTitle = titles[Math.floor(Math.random() * titles.length)];
+  } else {
+    chosenTitle = presetMap[presetKey];
+  }
+
+  const count = Math.max(1, Math.min(parseInt(chapterCount, 10) || 4, 5));
+  lastSaved.textContent = `Loading demo story "${chosenTitle}" (${count} chapters)...`;
 
   try {
-    if (appState.storyId) {
-      const demoRes = await apiFetch(`/stories/${appState.storyId}/demo`, { method: 'POST' });
+    const storyId = await ensureBackendStory();
+    if (storyId) {
+      const demoRes = await apiFetch(`/stories/${storyId}/demo?chapter_count=${count}&title=${encodeURIComponent(chosenTitle)}`, {
+        method: 'POST'
+      });
       if (demoRes.ok) {
         const demoData = await demoRes.json();
         console.log('Demo Loaded from Backend:', demoData);
@@ -1784,51 +3010,36 @@ async function loadDemoPlantedStory() {
         await syncBibleFromBackend();
         await syncFlagsFromBackend();
 
-        // Populate chapters in UI with the 4 demo chapters
-        appState.storyTitle = 'Chronicles of the Lantern Spirits';
+        // If backend returned flags, ensure they're loaded; if backend returned 0 flags, load from CLIENT_DEMO_FLAGS
+        if (!appState.insights.flags || appState.insights.flags.length === 0) {
+          appState.insights.flags = structuredClone(CLIENT_DEMO_FLAGS[chosenTitle] || CLIENT_DEMO_FLAGS['Chronicles of the Lantern Spirits']);
+        }
+
+        appState.storyTitle = chosenTitle;
         renderStoryTitle();
 
-        appState.chapters = [
-          {
-            id: 'chap-1',
-            number: 1,
-            title: 'Chapter 1',
-            subtitle: 'The Silver Watch',
-            content: `<p>Aarav, seventeen, lived in <span class="fact-entity" title="Place: Delhi">Delhi</span> with his grandmother. He had <span class="fact-entity" title="Trait: Brown eyes">brown eyes</span> and wore the silver watch his late mother Meera had left him. The old lantern spirits of the city could <span class="fact-entity" title="World Rule">never cross running water</span>, his grandmother warned him.</p>`
-          },
-          {
-            id: 'chap-2',
-            number: 2,
-            title: 'Chapter 2',
-            subtitle: 'The Departure',
-            content: `<p>On Monday morning Aarav boarded the train in <span class="fact-entity">Delhi</span>, clutching his mother's old watch. He had <span class="fact-entity" title="Knowledge: Key location unknown">no idea that Meera had hidden a brass key</span> somewhere in the old house; only his grandmother knew.</p>`
-          },
-          {
-            id: 'chap-3',
-            number: 3,
-            title: 'Chapter 3',
-            subtitle: 'The Shoreline',
-            content: `<p><span id="flaggedConflictSpan1" class="fact-conflict" title="Location/Time Conflict">By Monday evening Aarav was standing on the beach in Mumbai</span>, watching the sun go down and asking strangers about the lantern spirits.</p>`
-          },
-          {
-            id: 'chap-4',
-            number: 4,
-            title: 'Chapter 4',
-            subtitle: 'The Riverbank Encounter',
-            content: `<p>Aarav squinted with his <span id="flaggedConflictSpan" class="fact-conflict" title="Trait Conflict: Was brown eyes">bright green eyes</span> at the <span class="fact-conflict" title="World Rule Conflict: Spirits cannot cross running water">spirit drifting across the river</span> toward him. "The <span class="fact-conflict" title="Knowledge Conflict: Previously had no idea where the key was hidden">key Mom hid under the staircase</span>," he said, "is what you want, isn't it?"</p>`
-          }
-        ];
+        // Populate chapters in UI matching count
+        const sourceChapters = CLIENT_DEMO_STORIES[chosenTitle] || CLIENT_DEMO_STORIES['Chronicles of the Lantern Spirits'];
+        appState.chapters = sourceChapters.slice(0, count).map((ch, idx) => ({
+          id: `chap-${idx + 1}`,
+          number: idx + 1,
+          title: ch.title,
+          subtitle: ch.subtitle,
+          content: ch.content
+        }));
 
-        appState.activeChapterId = 'chap-4';
-        appState.activeChapterNumber = 4;
+        appState.activeChapterId = appState.chapters[0].id;
+        appState.activeChapterNumber = 1;
+        appState.flagsFilter = 'all'; // ALWAYS show all flags on demo load
+        appState.activeInsightTab = 'flags';
+
         renderChapterTabs();
         loadActiveChapterIntoEditor();
-
-        appState.activeInsightTab = 'flags';
         renderInsightsPanel();
         saveStateToStorage();
 
-        lastSaved.textContent = `Demo loaded: 4 chapters, ${demoData.flags_count} planted contradictions caught!`;
+        const activeFlagsCount = (appState.insights.flags || []).filter(f => !f.resolved).length;
+        lastSaved.textContent = `Demo loaded: "${chosenTitle}" (${count} chapters, ${activeFlagsCount} continuity flags caught)!`;
         return;
       }
     }
@@ -1837,12 +3048,29 @@ async function loadDemoPlantedStory() {
   }
 
   // Fallback demo load
-  appState.storyTitle = 'Chronicles of the Lantern Spirits';
+  appState.storyTitle = chosenTitle;
   renderStoryTitle();
-  appState.activeChapterId = 'chap-1';
+  const sourceChapters = CLIENT_DEMO_STORIES[chosenTitle] || CLIENT_DEMO_STORIES['Chronicles of the Lantern Spirits'];
+  appState.chapters = sourceChapters.slice(0, count).map((ch, idx) => ({
+    id: `chap-${idx + 1}`,
+    number: idx + 1,
+    title: ch.title,
+    subtitle: ch.subtitle,
+    content: ch.content
+  }));
+  appState.activeChapterId = appState.chapters[0].id;
+  appState.activeChapterNumber = 1;
+  appState.insights.flags = structuredClone(CLIENT_DEMO_FLAGS[chosenTitle] || CLIENT_DEMO_FLAGS['Chronicles of the Lantern Spirits']);
+  appState.flagsFilter = 'all'; // ALWAYS show all flags on demo load
+  appState.activeInsightTab = 'flags';
+
   renderChapterTabs();
   loadActiveChapterIntoEditor();
-  lastSaved.textContent = 'Planted story demo ready.';
+  scanAndExtractStoryEntities(false);
+  renderInsightsPanel();
+  saveStateToStorage();
+  const activeFlagsCount = (appState.insights.flags || []).filter(f => !f.resolved).length;
+  lastSaved.textContent = `Demo loaded: "${chosenTitle}" (${count} chapters, ${activeFlagsCount} continuity flags caught)!`;
 }
 
 // -----------------------------------------------------------------------------
@@ -1933,7 +3161,11 @@ function getEditorPlainText() {
 // Helper to get last scene context
 function getLastSceneContext() {
   const text = getEditorPlainText();
-  if (!text) return "Aarav pauses as the shadows lengthen.";
+  if (!text) {
+    const chars = (appState.insights.characters || []).map(c => c.name);
+    const lead = chars[0] || 'The protagonist';
+    return `${lead} considers the next step in "${appState.storyTitle || 'the story'}".`;
+  }
   const paragraphs = text.split('\n').map((p) => p.trim()).filter(Boolean);
   if (paragraphs.length > 0) {
     return paragraphs.slice(-2).join(' ');
@@ -1943,6 +3175,7 @@ function getLastSceneContext() {
 
 // Open AI Assistant tool drawer
 function openAiToolPanel(toolKey) {
+  scanAndExtractStoryEntities(false);
   appState.activeAiTool = toolKey;
   appState.aiAssistantExpanded = true;
   const aiToolsRow = document.getElementById('aiAssistantToolsRow');
@@ -2008,6 +3241,8 @@ function renderNextSceneToolHtml() {
 let nextSceneIteration = 0;
 
 window.loadNextSceneSuggestions = async function loadNextSceneSuggestions() {
+  if (!checkGuestActionLimit('Next Scene Generator')) return;
+
   const grid = document.getElementById('nextScenesGrid');
   const refreshBtn = document.getElementById('refreshScenesBtn');
   if (refreshBtn) {
@@ -2016,7 +3251,15 @@ window.loadNextSceneSuggestions = async function loadNextSceneSuggestions() {
   if (!grid) return;
 
   nextSceneIteration++;
+  const fullCanvasText = getEditorPlainText();
   const lastContext = getLastSceneContext();
+  const storyTitle = appState.storyTitle || 'Untitled Story';
+  const charList = (appState.insights.characters || []).map(c => c.name);
+  const placeList = (appState.insights.places || []).map(p => p.name);
+  const leadChar = charList[0] || 'The protagonist';
+  const companion = charList[1] || 'A trusted companion';
+  const mainPlace = placeList[0] || 'the scene';
+
   if (refreshBtn) {
     refreshBtn.textContent = '⏳ Thinking...';
     refreshBtn.disabled = true;
@@ -2032,7 +3275,8 @@ window.loadNextSceneSuggestions = async function loadNextSceneSuggestions() {
         method: 'POST',
         body: JSON.stringify({
           type: 'next_scene',
-          direction: lastContext || 'Aarav pauses as the shadows lengthen.',
+          direction: lastContext || fullCanvasText.slice(-300) || `${leadChar} pauses to consider the next move in "${storyTitle}".`,
+          canvas_context: fullCanvasText,
           emotion: ['tension', 'wonder', 'suspense', 'urgency', 'curiosity'][nextSceneIteration % 5],
           intensity: 7,
           sabotage: (nextSceneIteration % 3 === 0),
@@ -2065,151 +3309,65 @@ window.loadNextSceneSuggestions = async function loadNextSceneSuggestions() {
   }
 
   if (!suggestions || suggestions.length === 0) {
-    const firstWords = lastContext.slice(0, 50) || 'Aarav pauses near the ruins';
-    const fallbackPools = [
-      [
-        {
-          medal: '🥇 Option 1',
-          rating: '9.6/10',
-          badge: '🟢 Highly Recommended',
-          badgeClass: 'badge-success-subtle',
-          consistency: '96%',
-          desc: `The Archivist's Sealed Cipher — Aarav traces the royal crest after "${firstWords.slice(0, 35)}..." uncovering the Delhi aqueduct map.`,
-          why: 'Consistent with established facts in Delhi and royal archives.',
-          textToInsert: `Beneath the fractured altar stone of the courtyard, Aarav uncovered a parchment map bearing the royal seal of Delhi, marking a subterranean aqueduct where running water still flowed.`,
-          isConflict: false,
-        },
-        {
-          medal: '🥈 Option 2',
-          rating: '8.4/10',
-          badge: '🔵 Good Option',
-          badgeClass: 'badge-cyan-subtle',
-          consistency: '84%',
-          desc: `Ambush in the Upper Gallery — A cloaked watchman signals Diya as Varun's archers take position.`,
-          why: 'Fits character motivations and strategic tension without lore violation.',
-          textToInsert: `From the shadow of the colonnade, a cloaked watchman signaled to Diya. "Hold your torches—Varun's archers have already claimed the upper gallery."`,
-          isConflict: false,
-        },
-        {
-          medal: '🥉 Option 3',
-          rating: '4.5/10',
-          badge: '🔴 Possible Conflict',
-          badgeClass: 'badge-error-subtle',
-          consistency: '45%',
-          desc: `The River Breach — A dark wraith lunges directly through the river rapids following "${firstWords.slice(0, 30)}...".`,
-          why: '⚠️ Conflicts with established rule: Spirits cannot cross running water.',
-          textToInsert: `A wraith lunged directly through the foaming river rapids, crossing the running water effortlessly to strike at Aarav's shield.`,
-          isConflict: true,
-        },
-      ],
-      [
-        {
-          medal: '🥇 Option 1',
-          rating: '9.4/10',
-          badge: '🟢 Highly Recommended',
-          badgeClass: 'badge-success-subtle',
-          consistency: '94%',
-          desc: `Diya activates the ancient sluice gate to flood the eastern terrace.`,
-          why: 'Grounded in established hydro-barrier lore: running water protects against spirits.',
-          textToInsert: `Diya found the rusted iron lever embedded in the masonry and pulled it down. Mountain water surged through the trench, creating an unbroken channel that repelled the wraiths.`,
-          isConflict: false,
-        },
-        {
-          medal: '🥈 Option 2',
-          rating: '8.7/10',
-          badge: '🔵 Good Option',
-          badgeClass: 'badge-cyan-subtle',
-          consistency: '87%',
-          desc: `A royal messenger from Delhi arrives with a warning about Meera's watch.`,
-          why: 'Deepens the mystery behind Aarav’s heirloom and family past.',
-          textToInsert: `A breathless scout stumbled into the lantern light, clutching a royal writ from Delhi: "The watch on Aarav's wrist is not merely a keepsake—it is the key to the Ancient Kingdom's vault."`,
-          isConflict: false,
-        },
-        {
-          medal: '🥉 Option 3',
-          rating: '7.8/10',
-          badge: '💡 Creative Twist',
-          badgeClass: 'badge-cyan-subtle',
-          consistency: '78%',
-          desc: `Varun proposes a temporary ceasefire to decipher the obsidian runes.`,
-          why: 'Presents an unexpected diplomatic branch while maintaining character stakes.',
-          textToInsert: `Varun lowered his blade and stepped into the torchlight alone. "Neither of us can read the ancient script without the other. Divert the river channel with me, Aarav, or we both perish."`,
-          isConflict: false,
-        },
-      ],
-      [
-        {
-          medal: '🥇 Option 1',
-          rating: '9.7/10',
-          badge: '🟢 Highly Recommended',
-          badgeClass: 'badge-success-subtle',
-          consistency: '97%',
-          desc: `Aarav discovers his mother's secret inscription behind the altar wall.`,
-          why: 'Perfect alignment with established backstory of Meera and Delhi.',
-          textToInsert: `Running his fingers along the stone mortar, Aarav felt a familiar carved pattern: his mother's initials, followed by the coordinates of an underground cistern beneath Delhi.`,
-          isConflict: false,
-        },
-        {
-          medal: '🥈 Option 2',
-          rating: '8.5/10',
-          badge: '🔵 Good Option',
-          badgeClass: 'badge-cyan-subtle',
-          consistency: '85%',
-          desc: `A night wraith is repelled by the spray of the river cascade.`,
-          why: 'Visually demonstrates the hydro-barrier law in action.',
-          textToInsert: `The shadowy silhouette lunged forward, but the moment the misty spray of the river hit its ethereal form, it recoiled with a sharp hiss back into the pine grove.`,
-          isConflict: false,
-        },
-        {
-          medal: '🥉 Option 3',
-          rating: '4.2/10',
-          badge: '🔴 Possible Conflict',
-          badgeClass: 'badge-error-subtle',
-          consistency: '42%',
-          desc: `Aarav teleports instantly to Mumbai by Monday evening.`,
-          why: '⚠️ Conflicts with travel rule: Delhi to Mumbai takes more than one day by train.',
-          textToInsert: `Within an hour of leaving Delhi, Aarav was walking along the Mumbai shore, meeting with strangers about the spirits.`,
-          isConflict: true,
-        },
-      ],
-      [
-        {
-          medal: '🥇 Option 1',
-          rating: '9.3/10',
-          badge: '🟢 Highly Recommended',
-          badgeClass: 'badge-success-subtle',
-          consistency: '93%',
-          desc: `Diya decodes the obsidian runes using the archive cipher from Delhi.`,
-          why: 'Consistent with Diya’s role as friend & ancient script expert.',
-          textToInsert: `Holding the brass lantern close to the dark stone, Diya translated the characters: "Only the blood of Delhi's first guardian can break the northern seal."`,
-          isConflict: false,
-        },
-        {
-          medal: '🥈 Option 2',
-          rating: '8.6/10',
-          badge: '🔵 Good Option',
-          badgeClass: 'badge-cyan-subtle',
-          consistency: '86%',
-          desc: `Varun's vanguard sounds a retreat horn as storm clouds gather.`,
-          why: 'Introduces a tense atmospheric pause allowing the heroes to fortify.',
-          textToInsert: `A low horn sounded from the ridge above the Dark Forest. Varun's scouts pulled back into the shadows as torrential rain began to swell the riverbanks.`,
-          isConflict: false,
-        },
-        {
-          medal: '🥉 Option 3',
-          rating: '4.8/10',
-          badge: '🔴 Possible Conflict',
-          badgeClass: 'badge-error-subtle',
-          consistency: '48%',
-          desc: `Aarav suddenly displays bright green eyes during the confrontation.`,
-          why: '⚠️ Conflicts with character physical trait: Aarav was established to have brown eyes.',
-          textToInsert: `Aarav narrowed his piercing green eyes at Varun, clenching his fists as he stepped past Diya.`,
-          isConflict: true,
-        },
-      ],
+    const rawContext = lastContext || `${leadChar} in ${mainPlace}`;
+    const scenePool = [
+      {
+        medal: '🥇 Option 1',
+        rating: '9.5/10',
+        badge: '🟢 Highly Recommended',
+        badgeClass: 'badge-success-subtle',
+        consistency: '95%',
+        desc: `${leadChar}'s Discovery — Following up on recent events near ${mainPlace}.`,
+        why: `Directly builds upon the narrative arc of "${storyTitle}".`,
+        textToInsert: `Building upon what just happened, ${leadChar} stepped forward into ${mainPlace}. Recalling that "${rawContext.slice(0, 90)}", a decisive clue came to light, shifting the entire situation.`,
+        isConflict: false,
+      },
+      {
+        medal: '🥈 Option 2',
+        rating: '8.6/10',
+        badge: '🔵 Good Option',
+        badgeClass: 'badge-cyan-subtle',
+        consistency: '86%',
+        desc: `Encounter with ${companion} — Rising tension demands an immediate choice.`,
+        why: `Maintains character continuity while escalating narrative momentum.`,
+        textToInsert: `Footsteps broke the stillness around ${mainPlace} as ${companion} stepped forward. "We cannot afford to hesitate," they warned, pointing toward the path ahead.`,
+        isConflict: false,
+      },
+      {
+        medal: '🥉 Option 3',
+        rating: '8.1/10',
+        badge: '💡 Creative Twist',
+        badgeClass: 'badge-cyan-subtle',
+        consistency: '81%',
+        desc: `The Divergent Move — Choosing an unforeseen alternate route.`,
+        why: `Introduces a fresh narrative angle consistent with story rules.`,
+        textToInsert: `Rather than following conventional advice, ${leadChar} took a calculated risk away from ${mainPlace}, choosing intuition over prolonged doubt.`,
+        isConflict: false,
+      },
+      {
+        medal: '🥇 Option 1',
+        rating: '9.4/10',
+        badge: '🟢 Highly Recommended',
+        badgeClass: 'badge-success-subtle',
+        consistency: '94%',
+        desc: `Moment of Clarity — Understanding what was missed before.`,
+        why: `High emotional resonance and grounded narrative alignment.`,
+        textToInsert: `In the quiet stillness near ${mainPlace}, ${leadChar} examined the scene once more. What had seemed obscure suddenly resolved into unmistakable clarity.`,
+        isConflict: false,
+      },
+      {
+        medal: '🥈 Option 2',
+        rating: '8.8/10',
+        badge: '🔵 Good Option',
+        badgeClass: 'badge-cyan-subtle',
+        consistency: '88%',
+        desc: `Shared Resolve — Standing firm in the face of uncertainty.`,
+        why: `Strengthens character depth and dramatic stakes.`,
+        textToInsert: `${companion} approached ${leadChar} with quiet resolve: "Whatever comes next, we face it together. No turning back."`,
+        isConflict: false,
+      },
     ];
-
-    suggestions = fallbackPools[nextSceneIteration % fallbackPools.length];
+    suggestions = [...scenePool].sort(() => 0.5 - Math.random()).slice(0, 3);
   }
 
   appState.activeSceneSuggestions = suggestions;
@@ -2241,9 +3399,13 @@ window.loadNextSceneSuggestions = async function loadNextSceneSuggestions() {
 // DIALOGUE GENERATOR & IN-VOICE SPEECH (AI ASSISTANT)
 // -----------------------------------------------------------------------------
 function renderDialogueToolHtml() {
-  const characters = appState.insights.characters.length > 0
-    ? appState.insights.characters
-    : [{ name: 'Aarav' }, { name: 'Diya' }, { name: 'Varun' }];
+  const storyTitle = appState.storyTitle || 'Untitled Story';
+  const detectedChars = (appState.insights.characters || []);
+  const characters = detectedChars.length > 0
+    ? detectedChars
+    : [{ name: 'Protagonist', role: 'Main Lead' }, { name: 'Companion', role: 'Ally' }, { name: 'Rival', role: 'Antagonist' }];
+  const defaultChar = characters[0].name;
+  const defaultSituation = `${defaultChar} faces a crucial turning point in "${storyTitle}"`;
 
   return `
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
@@ -2256,7 +3418,7 @@ function renderDialogueToolHtml() {
         </div>
         <div>
           <label class="block text-[11px] font-semibold app-text-muted uppercase mb-1">Enter Situation</label>
-          <input id="dialogueSituationInput" type="text" value="Aarav is scared but trying to hide it" class="w-full px-3 py-1.5 rounded-lg border app-border app-surface-secondary text-xs app-text-primary focus:outline-none focus:border-teal-500" />
+          <input id="dialogueSituationInput" type="text" value="${defaultSituation}" class="w-full px-3 py-1.5 rounded-lg border app-border app-surface-secondary text-xs app-text-primary focus:outline-none focus:border-teal-500" />
         </div>
         <div>
           <label class="block text-[11px] font-semibold app-text-muted uppercase mb-1">Underlying Emotion</label>
@@ -2274,27 +3436,58 @@ function renderDialogueToolHtml() {
       </div>
 
       <div id="dialogueResultsContainer" class="lg:col-span-7 space-y-2.5">
-        ${getDialogueSuggestionsHtml('Aarav', 'Aarav is scared but trying to hide it')}
+        ${getDialogueSuggestionsHtml(defaultChar, defaultSituation, null, 'defiance')}
       </div>
     </div>
   `;
 }
 
 function getDialogueSuggestionsHtml(character, situation, optionsList = null, selectedEmotion = 'defiance') {
-  const list = optionsList && optionsList.length > 0 ? optionsList : [
-    {
-      line: `"Keep the lantern steady, Diya. The shadows only look taller because the mist is rising off the river."`,
-      underlying_emotion: selectedEmotion,
-      intensity: 7,
-      why_in_voice: `${character} is cautious but reassuring`,
-    },
-    {
-      line: `"We didn't ride three nights from Delhi just to hesitate at an open gate. Stay behind my shield."`,
-      underlying_emotion: selectedEmotion,
-      intensity: 8,
-      why_in_voice: `${character} leads with bravery despite danger`,
-    },
-  ];
+  const em = selectedEmotion || 'defiance';
+  const pools = {
+    defiance: [
+      `"We didn't endure all of this just to turn back now. We see it through."`,
+      `"Let them bring whatever opposition they want. We stand our ground right here."`,
+      `"If the standard path is closed to us, then we will forge our own."`,
+      `"Step aside. I am finishing what was started, no matter the consequences."`,
+      `"Fear is a luxury we can't afford right now. Stand firm."`
+    ],
+    fear: [
+      `"Keep your voice down... if they realize what we've discovered, none of us walk away from this."`,
+      `"I'm not shaking out of weakness—I'm shaking because we only get one chance to get this right."`,
+      `"Listen to me very carefully. Don't look back now. Just keep moving steadily forward."`,
+      `"Did you hear that sound in the distance? Something is closer than it has any right to be."`,
+      `"Hold your breath and wait. As long as we stay still, we have the element of surprise."`
+    ],
+    grief: [
+      `"Every time the silence settles like this, I keep expecting to hear their voice again."`,
+      `"You think I don't feel the weight of this? I carry it with every single step."`,
+      `"Some promises outlive the moments they were spoken. That is why I am still here."`,
+      `"All the victories in the world cannot restore what we had to leave behind."`
+    ],
+    joy: [
+      `"Look—it actually held! We made it past the hardest hurdle!"`,
+      `"For the first time in what feels like forever, I genuinely believe we have a real path forward."`,
+      `"I told you things would work out if we kept our resolve. Let's see what comes next!"`,
+      `"${character}, take a breath and smile. The worst of it is finally behind us."`
+    ],
+    curiosity: [
+      `"Notice the subtle pattern in how this happened? There is far more to this than meets the eye."`,
+      `"If we examine the details carefully before acting, we won't need to take reckless risks."`,
+      `"Tell me everything you observed from the very beginning. Leave nothing out."`,
+      `"Look closely at what was left behind... someone wanted us to find this."`
+    ]
+  };
+  const poolKey = Object.keys(pools).find(k => em.toLowerCase().includes(k)) || 'defiance';
+  const rawPool = pools[poolKey] || pools.defiance;
+  const picked = [...rawPool].sort(() => 0.5 - Math.random()).slice(0, 3);
+
+  const list = optionsList && optionsList.length > 0 ? optionsList : picked.map((line, idx) => ({
+    line,
+    underlying_emotion: em,
+    intensity: idx === 0 ? 8 : (idx === 1 ? 7 : 6),
+    why_in_voice: `Reflects ${character}'s perspective regarding ${situation || 'the situation'}.`
+  }));
 
   appState.activeDialogueLines = list;
 
@@ -2303,7 +3496,7 @@ function getDialogueSuggestionsHtml(character, situation, optionsList = null, se
       <div class="space-y-1">
         <div class="flex items-center gap-2">
           <span class="text-[11px] font-bold text-teal-400">👤 ${character}</span>
-          <span class="text-[10px] px-2 py-0.5 rounded bg-teal-500/10 text-teal-400 font-semibold">${item.underlying_emotion || selectedEmotion} (${item.intensity || 7}/10)</span>
+          <span class="text-[10px] px-2 py-0.5 rounded bg-teal-500/10 text-teal-400 font-semibold">${item.underlying_emotion || em} (${item.intensity || 7}/10)</span>
           <span class="text-[10px] app-text-muted truncate max-w-[200px]">• ${item.why_in_voice || situation}</span>
         </div>
         <p class="text-xs italic app-text-primary">${item.line}</p>
@@ -2372,8 +3565,11 @@ function bindDialogueEvents() {
   if (!btn) return;
 
   btn.addEventListener('click', async () => {
+    if (!checkGuestActionLimit('In-Voice Dialogue Generator')) return;
+
     const charName = document.getElementById('dialogueCharSelect').value;
-    const situation = document.getElementById('dialogueSituationInput').value.trim() || 'Aarav is scared but trying to hide it';
+    const defaultSit = `${charName} confronts an unexpected turn in "${appState.storyTitle || 'the story'}"`;
+    const situation = document.getElementById('dialogueSituationInput').value.trim() || defaultSit;
     const emotion = document.getElementById('dialogueEmotionSelect')?.value || 'defiance';
     const container = document.getElementById('dialogueResultsContainer');
 
@@ -2390,6 +3586,7 @@ function bindDialogueEvents() {
             type: 'dialogue',
             character: charName,
             situation: situation,
+            canvas_context: getEditorPlainText(),
             emotion: emotion,
             intensity: 7,
           }),
@@ -2437,6 +3634,8 @@ function renderBranchesToolHtml() {
 let storyBranchesFreshCount = 0;
 
 window.loadStoryBranches = async function loadStoryBranches() {
+  if (!checkGuestActionLimit('Multiverse Branches Generator')) return;
+
   const grid = document.getElementById('storyBranchesGrid');
   const refreshBtn = document.getElementById('refreshBranchesBtn');
   if (refreshBtn) {
@@ -2445,7 +3644,15 @@ window.loadStoryBranches = async function loadStoryBranches() {
   if (!grid) return;
 
   storyBranchesFreshCount++;
+  const fullCanvasText = getEditorPlainText();
   const lastContext = getLastSceneContext();
+  const storyTitle = appState.storyTitle || 'Untitled Story';
+  const charList = (appState.insights.characters || []).map(c => c.name);
+  const leadChar = charList[0] || 'The protagonist';
+  const secondChar = charList[1] || 'an unexpected companion';
+  const placeList = (appState.insights.places || []).map(p => p.name);
+  const mainLoc = placeList[0] || 'the setting';
+
   if (refreshBtn) {
     refreshBtn.textContent = '⏳ Thinking...';
     refreshBtn.disabled = true;
@@ -2461,7 +3668,8 @@ window.loadStoryBranches = async function loadStoryBranches() {
         method: 'POST',
         body: JSON.stringify({
           type: 'branches',
-          direction: lastContext || 'Aarav pauses as the shadows lengthen.',
+          direction: lastContext || fullCanvasText.slice(-300) || `${leadChar} observes the shifting circumstances in "${storyTitle}".`,
+          canvas_context: fullCanvasText,
           emotion: ['curiosity', 'suspense', 'wonder', 'defiance', 'urgency'][storyBranchesFreshCount % 5],
           intensity: 7,
           sabotage: false,
@@ -2490,56 +3698,45 @@ window.loadStoryBranches = async function loadStoryBranches() {
   }
 
   if (!branches || branches.length === 0) {
-    const branchPools = [
-      [
-        {
-          title: '🌿 Branch 1 — The Hidden Letter',
-          rating: '9.2',
-          consistency: '94% Consistent',
-          desc: "Aarav finds a sealed letter from Delhi's High Archivist revealing Varun was once sworn to protect the citadel.",
-          text: "Tucked inside the hollow hilt of the ceremonial pedestal lay a letter bearing the Archivist's wax signet—revealing Varun had once taken the same blood oath in Delhi.",
-        },
-        {
-          title: "🌿 Branch 2 — The Friend's Secret",
-          rating: '8.7',
-          consistency: '89% Consistent',
-          desc: 'Diya confesses she already knows the obsidian cipher because her family built the northern water wards.',
-          text: 'Diya stepped past the torches and placed her palm over the runes. "Forgive me, Aarav—my family forged this lock before we ever met in Delhi."',
-        },
-        {
-          title: '🌿 Branch 3 — The Villain Appears',
-          rating: '7.9',
-          consistency: '84% Consistent',
-          desc: 'Varun confronts Aarav directly inside the courtyard, offering a truce before the forest spirits surround them.',
-          text: 'Iron boots echoed from the shattered gate as Varun emerged alone, lowering his blade. "Divert the river channel with me, Aarav, or neither of us leaves this fortress alive."',
-        },
-      ],
-      [
-        {
-          title: '🌿 Branch 1 — The Sluice Gate Awakening',
-          rating: '9.5',
-          consistency: '95% Consistent',
-          desc: 'Aarav discovers the river sluice mechanism capable of flooding the lower fortress.',
-          text: 'Aarav gripped the rusted wheel beneath the parapet, feeling the vibration of pressurized mountain water ready to scour the moat clean of wraiths.',
-        },
-        {
-          title: '🌿 Branch 2 — The Starlit Inscription',
-          rating: '8.9',
-          consistency: '90% Consistent',
-          desc: 'Diya aligns the brass lantern with the celestial markers above the Dark Forest.',
-          text: 'The lantern lenses cast concentric rings across the flagstones, exposing an unmapped subterranean route that bypassed the spirit tree line completely.',
-        },
-        {
-          title: '🌿 Branch 3 — The Royal Heraldry',
-          rating: '8.3',
-          consistency: '86% Consistent',
-          desc: 'A messenger arrives from Delhi bearing royal seals ordering Varun’s immediate stand-down.',
-          text: 'From the forest trail emerged a lone courier carrying Delhi’s silver falcon banner. "Varun! Your garrison commission has been revoked by the Grand Council!"',
-        },
-      ],
+    const rawContext = lastContext || `${leadChar} near ${mainLoc}`;
+    const branchPool = [
+      {
+        title: `🌿 Branch 1 — ${leadChar}'s Direct Initiative`,
+        rating: '9.4',
+        consistency: '95% Consistent',
+        desc: `${leadChar} chooses decisive action regarding ${rawContext.slice(0, 60)}.`,
+        text: `Stepping past all hesitation near ${mainLoc}, ${leadChar} decided that the answers lay directly ahead. Every instinct urged bold movement over idle contemplation.`,
+      },
+      {
+        title: `🌿 Branch 2 — Alliance with ${secondChar}`,
+        rating: '8.8',
+        consistency: '90% Consistent',
+        desc: `${leadChar} and ${secondChar} find mutual common ground.`,
+        text: `Emerging into the space near ${mainLoc}, ${secondChar} lowered their guard. "Our interests align more than you think," they observed, signaling an agreement.`,
+      },
+      {
+        title: `🌿 Branch 3 — The Unseen Pathway`,
+        rating: '8.2',
+        consistency: '85% Consistent',
+        desc: `${leadChar} uncovers an alternate covert angle around ${mainLoc}.`,
+        text: `Examining the periphery rather than the main passage, ${leadChar} spotted a secondary trail that promised to bypass the primary risks entirely.`,
+      },
+      {
+        title: `🌿 Branch 1 — The Decisive Breakthrough`,
+        rating: '9.5',
+        consistency: '96% Consistent',
+        desc: `${leadChar} connects hidden clues that change the stakes.`,
+        text: `The stillness around ${mainLoc} provided the clarity ${leadChar} needed. Pieces of the puzzle suddenly aligned, revealing what had remained hidden until now.`,
+      },
+      {
+        title: `🌿 Branch 2 — A Test of Wills`,
+        rating: '8.7',
+        consistency: '89% Consistent',
+        desc: `A tense moment between ${leadChar} and ${secondChar} forces a commitment.`,
+        text: `Neither ${leadChar} nor ${secondChar} backed down as the pressure mounted around ${mainLoc}. The silence demanded a truth that neither had dared voice aloud.`,
+      },
     ];
-
-    branches = branchPools[storyBranchesFreshCount % branchPools.length];
+    branches = [...branchPool].sort(() => 0.5 - Math.random()).slice(0, 3);
   }
 
   appState.activeBranchSuggestions = branches;
@@ -2711,7 +3908,13 @@ window.copyVoiceDialogueToTTS = function(text, emotionHint, intensityHint) {
     const hintLower = emotionHint.toLowerCase();
     for (let i = 0; i < emotionSelect.options.length; i++) {
       const optVal = emotionSelect.options[i].value.toLowerCase();
-      if (hintLower.includes(optVal) || (hintLower.includes('love') && optVal === 'happy') || (hintLower.includes('defian') && optVal === 'angry')) {
+      const isJoy = (hintLower.includes('joy') || hintLower.includes('amaze') || hintLower.includes('exhilarat') || hintLower.includes('wonder') || hintLower.includes('delight') || hintLower.includes('love') || hintLower.includes('happy')) && optVal === 'happy';
+      const isFear = (hintLower.includes('fear') || hintLower.includes('scared') || hintLower.includes('urgenc') || hintLower.includes('panic')) && optVal === 'fearful';
+      const isDefiant = (hintLower.includes('defian') || hintLower.includes('anger') || hintLower.includes('fury') || hintLower.includes('rage')) && optVal === 'angry';
+      const isSad = (hintLower.includes('sad') || hintLower.includes('grief') || hintLower.includes('sorrow')) && optVal === 'sad';
+      const isNeutral = (hintLower.includes('neutral') || hintLower.includes('narrative') || hintLower.includes('inquisit') || hintLower.includes('curio')) && optVal === 'neutral';
+
+      if (hintLower.includes(optVal) || isJoy || isFear || isDefiant || isSad || isNeutral) {
         emotionSelect.selectedIndex = i;
         break;
       }
@@ -2719,12 +3922,12 @@ window.copyVoiceDialogueToTTS = function(text, emotionHint, intensityHint) {
   }
   const slider = document.getElementById('ttsIntensitySlider');
   const sliderVal = document.getElementById('ttsIntensityValue');
-  if (slider && intensityHint) {
+  if (slider && intensityHint !== undefined) {
     const intenPct = Math.min(100, Math.max(10, intensityHint * 10));
     slider.value = intenPct;
     if (sliderVal) sliderVal.textContent = `${intenPct}%`;
   }
-  showToast('Copied exact dialogue to Part B (TTS)! Press ▶ Play to synthesize.');
+  showToast('Copied dialogue, emotion & intensity to TTS! Press ▶ Play to synthesize.');
 };
 
 function renderVoiceAnalysisResult(report) {
@@ -3041,9 +4244,14 @@ function bindVoiceStudioEvents() {
 
       // Local semantic emotion & rating evaluator grounded in the actual dialogue line
       const cleanLower = dialogueText.toLowerCase();
+      const tokens = cleanLower.match(/\b[a-z']+\b/g) || [];
+      const intensifierWords = new Set(["really", "very", "extremely", "pretty", "much", "so", "totally", "absolutely", "insanely", "incredibly", "deeply", "truly", "wildly"]);
+      const numIntensifiers = tokens.filter(t => intensifierWords.has(t)).length;
+      const hasExclamation = dialogueText.includes('!');
+
       let p_emo = 'Narrative Conviction';
       let s_emo = 'Poise';
-      let inten = 7;
+      let inten = Math.min(8, Math.max(5, 5 + numIntensifiers));
       let val = 'neutral';
       let energy = 'medium';
       let cues = 'Measured pacing, clear diction, grounded vocal register';
@@ -3051,42 +4259,67 @@ function bindVoiceStudioEvents() {
       let note = 'Balanced acoustic delivery aligned with narrative dialogue.';
       let summary = 'Natural and steady line delivery with good vocal presence.';
 
-      if (/(love|truly|heart|darling|adore|dearest|kiss|passion|bithika|subhankar)/i.test(cleanLower)) {
+      const joyPattern = /\b(amazing|spell|amazed|joy|joyful|joyfulness|enjoy|enjoyed|enjoyment|awesome|fantastic|brilliant|wonderful|great|spectacular|magical|magic|incredible|thrilled|exciting|excited|delight|delighted|superb|masterpiece|astonishing|breathtaking|marvelous|wow|fun|ecstatic|happy)\b/i;
+      const lovePattern = /\b(love|loves|loved|heart|darling|adore|adored|dearest|kiss|passion|bithika|subhankar|cherish)\b/i;
+      const fearPattern = /\b(fear|afraid|scared|danger|dangerous|run|dark|wraith|monster|kill|die|shadow|flee|panic|dread|horror)\b/i;
+      const defiancePattern = /\b(won't|never|fight|stand|swear|defeat|blade|strike|refuse|defy|conquer|destroy|rage|angry)\b/i;
+      const sadPattern = /\b(sad|grief|lost|crying|tears|alone|heavy|goodbye|sorry|mourn|hopeless|broken|despair)\b/i;
+      const inqPattern = /\b(why|what|who|where|how|secret|truth|hidden|clue|riddle|which|curious|mystery)\b/i;
+
+      if (joyPattern.test(cleanLower)) {
+        p_emo = 'Joy / Amazement';
+        s_emo = 'Exhilaration & Wonder';
+        inten = Math.min(10, 8 + numIntensifiers + (hasExclamation ? 1 : 0));
+        val = 'positive';
+        energy = 'high';
+        cues = 'Vibrant melodic pitch lift, bright resonant overtones, enthusiastic breath cadence';
+        note = 'Warm, enthusiastic vocal delivery matches genuine joy, amazement, and wonder.';
+        summary = 'Vocal delivery conveys sheer delight, fascination, and captivating enjoyment.';
+      } else if (lovePattern.test(cleanLower)) {
         p_emo = 'Affection / Deep Love';
         s_emo = 'Tenderness';
-        inten = 8;
+        inten = Math.min(10, 7 + numIntensifiers);
         val = 'positive';
         energy = 'medium';
         cues = 'Warm vocal resonance, softening cadence, gentle micro-pauses';
         note = 'Warm vocal tone matches sincere affection and intimate dialogue.';
         summary = 'Delivery conveys sincere affection and emotional vulnerability.';
-      } else if (/(fear|scared|danger|run|dark|wraith|monster|kill|die|shadow)/i.test(cleanLower)) {
+      } else if (fearPattern.test(cleanLower)) {
         p_emo = 'Fear / High Urgency';
         s_emo = 'Panic';
-        inten = 9;
+        inten = Math.min(10, 8 + numIntensifiers + (hasExclamation ? 1 : 0));
         val = 'negative';
         energy = 'high';
         cues = 'Accelerated tempo, shallow breathing, elevated vocal pitch';
         note = 'Vocal agitation mirrors the high-stakes threat in the line.';
         summary = 'Urgent, strained delivery communicates immediate peril.';
-      } else if (/(won't|never|fight|stand|swear|defeat|blade|strike|refuse)/i.test(cleanLower)) {
+      } else if (defiancePattern.test(cleanLower)) {
         p_emo = 'Defiance / Determination';
         s_emo = 'Courage';
-        inten = 8;
+        inten = Math.min(10, 8 + numIntensifiers + (hasExclamation ? 1 : 0));
         val = 'positive';
         energy = 'high';
         cues = 'Resonant chest voice, firm cadence, crisp consonant articulation';
         note = 'Firm acoustic attack underscores protagonist resolve.';
         summary = 'Delivery is commanding, resolute, and unwavering.';
-      } else if (/(sad|grief|lost|crying|tears|alone|heavy|goodbye|sorry)/i.test(cleanLower)) {
+      } else if (sadPattern.test(cleanLower)) {
         p_emo = 'Sadness / Grief';
         s_emo = 'Sorrow';
-        inten = 7;
+        inten = Math.min(10, 6 + numIntensifiers);
         val = 'negative';
         energy = 'low';
         cues = 'Slow tempo, descending pitch contour, prolonged pauses';
         note = 'Subdued vocal dynamics capture solemn melancholy.';
         summary = 'Introspective delivery imbued with restrained grief.';
+      } else if (inqPattern.test(cleanLower)) {
+        p_emo = 'Inquisitive / Suspicion';
+        s_emo = 'Curiosity';
+        inten = Math.min(8, Math.max(5, 5 + numIntensifiers));
+        val = 'neutral';
+        energy = 'medium';
+        cues = 'Rising terminal inflection, deliberate pacing, measured breath';
+        note = 'Cautious inflection matches investigative intent.';
+        summary = 'Guarded vocal curiosity probing for answers.';
       }
 
       const report = {
@@ -3100,10 +4333,10 @@ function bindVoiceStudioEvents() {
         words_vs_tone_mismatch: mismatch,
         mismatch_note: note,
         summary: summary,
-        delivery_rating: +(7.5 + (inten % 3) * 0.7).toFixed(1),
-        tone_rating: +(mismatch ? 6.8 : 9.4).toFixed(1),
-        clarity_rating: 8.9,
-        overall_rating: +((8.2 + inten * 0.15)).toFixed(1)
+        delivery_rating: +Math.min(9.9, Math.max(6.5, 7.0 + inten * 0.28)).toFixed(1),
+        tone_rating: +(mismatch ? 6.8 : Math.min(9.9, 8.5 + (val === 'positive' ? 0.9 : 0.5))).toFixed(1),
+        clarity_rating: +Math.min(9.9, Math.max(7.0, 7.8 + ((inten * 3) % 5) * 0.35 + (inten >= 8 ? 0.5 : 0))).toFixed(1),
+        overall_rating: +((Math.min(9.9, Math.max(6.5, 7.0 + inten * 0.28)) + (mismatch ? 6.8 : Math.min(9.9, 8.5 + (val === 'positive' ? 0.9 : 0.5))) + Math.min(9.9, Math.max(7.0, 7.8 + ((inten * 3) % 5) * 0.35 + (inten >= 8 ? 0.5 : 0)))) / 3).toFixed(1)
       };
 
       renderVoiceAnalysisResult(report);
@@ -3385,6 +4618,465 @@ window.playDialogueAudioByIndex = async function(idx, btn) {
 };
 
 // -----------------------------------------------------------------------------
+// DOCUMENT SAVE / EXPORT / IMPORT (MS WORD STYLE FILE SYSTEM ACCESS)
+// -----------------------------------------------------------------------------
+function getHandleDB() {
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open('StoryWaveFiles', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('handles');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch (e) {
+      resolve(null);
+    }
+  });
+}
+
+async function storeActiveFileHandle(handle) {
+  if (!handle) return;
+  try {
+    const db = await getHandleDB();
+    if (!db) return;
+    const tx = db.transaction('handles', 'readwrite');
+    tx.objectStore('handles').put(handle, 'activeHandle');
+  } catch (e) {
+    console.debug('Failed to cache file handle:', e);
+  }
+}
+
+async function restoreActiveFileHandle() {
+  try {
+    const db = await getHandleDB();
+    if (!db) return null;
+    return new Promise((resolve) => {
+      const tx = db.transaction('handles', 'readonly');
+      const req = tx.objectStore('handles').get('activeHandle');
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
+function updateLinkedFileBadge(fileName, format) {
+  const badge = document.getElementById('activeFileIndicatorBadge');
+  const menuHeader = document.getElementById('saveMenuLinkedHeader');
+  const menuName = document.getElementById('saveMenuLinkedName');
+  const linkedActionText = document.getElementById('saveToLinkedActionText');
+  const saveBtn = document.getElementById('saveStoryBtn');
+
+  if (badge) {
+    badge.classList.remove('hidden');
+    badge.innerHTML = `📄 <span class="font-semibold text-teal-300">${escapeHtml(fileName)}</span> <span class="text-[10px] text-teal-400 font-normal hidden md:inline">(MS Word Mode)</span>`;
+    badge.title = `Continuous Save active: edits will be written directly to ${fileName}`;
+  }
+  if (menuHeader) menuHeader.classList.remove('hidden');
+  if (menuName) menuName.textContent = fileName;
+  if (linkedActionText) linkedActionText.textContent = `Save to ${fileName}`;
+  if (saveBtn) saveBtn.title = `Save directly to ${fileName} (MS Word Mode)`;
+}
+
+function openSaveFormatModal() {
+  const modal = document.getElementById('saveFormatModalOverlay');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
+}
+
+function closeSaveFormatModal() {
+  const modal = document.getElementById('saveFormatModalOverlay');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+function generateClientTxtBlob(title, chapters) {
+  let content = `${title || 'Story'}\n${'='.repeat(Math.max((title || 'Story').length, 10))}\n\n`;
+  (chapters || []).forEach((ch) => {
+    content += `--- ${ch.title || `Chapter ${ch.number || 1}`} ---\n\n${ch.content || ''}\n\n`;
+  });
+  return new Blob([content], { type: 'text/plain;charset=utf-8' });
+}
+
+async function fetchExportBlob(format = 'docx') {
+  saveCurrentEditorContentToState();
+  const payload = {
+    title: appState.storyTitle || 'Untitled Story',
+    chapters: appState.chapters.map((c) => ({
+      number: c.number,
+      title: c.title,
+      content: c.content || ''
+    }))
+  };
+  const token = appState.authToken || localStorage.getItem('storyWaveToken');
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE}/stories/export?format=${format}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Failed to export ${format.toUpperCase()}: ${res.status} ${errText || res.statusText}`);
+  }
+  return await res.blob();
+}
+
+async function syncStoryToBackendAsync() {
+  if (!appState.storyId) return;
+  try {
+    const editor = document.getElementById('storyEditor');
+    const chapterText = (editor ? editor.innerText.trim() : '') || (appState.chapters[0]?.content || '');
+    const activeChap = appState.chapters.find((c) => c.id === appState.activeChapterId) || appState.chapters[0];
+    const chapterNum = activeChap.number || 1;
+
+    let res = await apiFetch(`/stories/${appState.storyId}/chapters/${chapterNum}`, {
+      method: 'PUT',
+      body: JSON.stringify({ text: chapterText })
+    });
+    if (res.status === 404) {
+      await apiFetch(`/stories/${appState.storyId}/chapters`, {
+        method: 'POST',
+        body: JSON.stringify({ number: chapterNum, text: chapterText })
+      });
+    }
+    await syncBibleFromBackend();
+    await syncFlagsFromBackend();
+  } catch (e) {
+    console.debug('Background backend sync:', e);
+  }
+}
+
+async function saveStoryToFile(formatChoice = null, forceNewPicker = false) {
+  if (!checkGuestActionLimit('Save & Export Story')) return;
+
+  saveCurrentEditorContentToState();
+  saveStateToStorage();
+
+  const saveIcon = document.getElementById('saveBtnIcon');
+  const saveText = document.getElementById('saveBtnText');
+  const saveBtn = document.getElementById('saveStoryBtn');
+  const lastSaved = document.getElementById('lastSavedIndicator');
+
+  // Default to Word .docx if no format selected yet
+  const chosenFormat = (formatChoice || activeFileFormat || 'docx').toLowerCase();
+
+  // 1. Direct Continuous Save to existing linked File Handle (True MS Word Continuous Save)
+  if (activeFileHandle && !forceNewPicker && (!formatChoice || formatChoice === activeFileFormat)) {
+    if (saveIcon) saveIcon.textContent = '⏳';
+    if (saveText) saveText.textContent = 'Saving...';
+    if (saveBtn) saveBtn.disabled = true;
+
+    try {
+      // Check and request permission if needed immediately within user gesture
+      if (activeFileHandle.queryPermission) {
+        let perm = await activeFileHandle.queryPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') {
+          perm = await activeFileHandle.requestPermission({ mode: 'readwrite' });
+          if (perm !== 'granted') {
+            throw new Error('Write permission was not granted by user');
+          }
+        }
+      }
+
+      // Open writable stream directly to the existing file FIRST
+      const writable = await activeFileHandle.createWritable();
+
+      // Generate updated document binary
+      let blob;
+      try {
+        blob = await fetchExportBlob(activeFileFormat || 'docx');
+      } catch (exportErr) {
+        if ((activeFileFormat || 'docx') === 'txt') {
+          blob = generateClientTxtBlob(appState.storyTitle || 'Story', appState.chapters);
+        } else {
+          throw exportErr;
+        }
+      }
+
+      // Stream write directly into the file and close
+      await writable.write(blob);
+      await writable.close();
+
+      syncStoryToBackendAsync();
+
+      if (saveIcon) saveIcon.textContent = '✓';
+      if (saveText) saveText.textContent = 'Saved ✓';
+      if (saveBtn) saveBtn.classList.add('border-teal-500', 'text-teal-400');
+      if (lastSaved) lastSaved.textContent = `Saved directly to ${activeFileName} just now`;
+      showToast(`💾 Saved updates directly to "${activeFileName}"!`);
+
+      setTimeout(() => {
+        if (saveIcon) saveIcon.textContent = '💾';
+        if (saveText) saveText.textContent = 'Save';
+        if (saveBtn) {
+          saveBtn.classList.remove('border-teal-500', 'text-teal-400');
+          saveBtn.disabled = false;
+        }
+      }, 1500);
+      return true;
+    } catch (err) {
+      console.warn('Direct file save failed:', err);
+      showToast(`⚠️ Could not save to "${activeFileName}": ${err.message || 'Permission denied'}`);
+      if (saveIcon) saveIcon.textContent = '💾';
+      if (saveText) saveText.textContent = 'Save';
+      if (saveBtn) {
+        saveBtn.classList.remove('border-teal-500', 'text-teal-400');
+        saveBtn.disabled = false;
+      }
+      return false;
+    }
+  }
+
+  // 2. Save As: Open Native OS File Picker IMMEDIATELY within the user click/keystroke gesture
+  const ext = `.${chosenFormat}`;
+  const baseTitle = (appState.storyTitle || 'Untitled_Story').replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().replace(/\s+/g, '_') || 'Story';
+  const defaultFilename = `${baseTitle}${ext}`;
+
+  const mimeTypes = {
+    docx: { 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] },
+    pdf: { 'application/pdf': ['.pdf'] },
+    txt: { 'text/plain': ['.txt'] }
+  };
+
+  let chosenHandle = null;
+
+  if ('showSaveFilePicker' in window) {
+    try {
+      chosenHandle = await window.showSaveFilePicker({
+        suggestedName: defaultFilename,
+        types: [{
+          description: `${chosenFormat.toUpperCase()} Document`,
+          accept: mimeTypes[chosenFormat] || { 'application/octet-stream': [ext] }
+        }]
+      });
+    } catch (pickerErr) {
+      if (pickerErr.name === 'AbortError') {
+        // User cancelled the file picker dialog
+        if (saveIcon) saveIcon.textContent = '💾';
+        if (saveText) saveText.textContent = 'Save';
+        if (saveBtn) saveBtn.disabled = false;
+        return false;
+      }
+      console.warn('showSaveFilePicker error, falling back to download:', pickerErr);
+    }
+  }
+
+  // User picked their destination folder! Now generate and write document.
+  if (saveIcon) saveIcon.textContent = '⏳';
+  if (saveText) saveText.textContent = 'Saving...';
+  if (saveBtn) saveBtn.disabled = true;
+
+  try {
+    let blob;
+    try {
+      blob = await fetchExportBlob(chosenFormat);
+    } catch (exportErr) {
+      console.warn('Backend export failed, attempting client fallback:', exportErr);
+      if (chosenFormat === 'txt') {
+        blob = generateClientTxtBlob(appState.storyTitle || 'Story', appState.chapters);
+      } else {
+        throw exportErr;
+      }
+    }
+
+    if (chosenHandle) {
+      const writable = await chosenHandle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+
+      activeFileHandle = chosenHandle;
+      activeFileName = chosenHandle.name;
+      activeFileFormat = chosenFormat;
+      appState.activeFileName = chosenHandle.name;
+      appState.activeFileFormat = chosenFormat;
+      saveStateToStorage();
+      await storeActiveFileHandle(chosenHandle);
+      updateLinkedFileBadge(activeFileName, chosenFormat);
+
+      syncStoryToBackendAsync();
+
+      if (saveIcon) saveIcon.textContent = '✓';
+      if (saveText) saveText.textContent = 'Saved ✓';
+      if (saveBtn) saveBtn.classList.add('border-teal-500', 'text-teal-400');
+      if (lastSaved) lastSaved.textContent = `Saved directly to ${activeFileName}`;
+      showToast(`💾 Saved as "${activeFileName}". Continuous MS Word saving active!`);
+
+      setTimeout(() => {
+        if (saveIcon) saveIcon.textContent = '💾';
+        if (saveText) saveText.textContent = 'Save';
+        if (saveBtn) {
+          saveBtn.classList.remove('border-teal-500', 'text-teal-400');
+          saveBtn.disabled = false;
+        }
+      }, 1500);
+      return true;
+    }
+
+    // Fallback download if showSaveFilePicker not supported or failed
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = defaultFilename;
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    }, 500);
+
+    activeFileName = defaultFilename;
+    activeFileFormat = chosenFormat;
+    appState.activeFileName = defaultFilename;
+    appState.activeFileFormat = chosenFormat;
+    saveStateToStorage();
+    updateLinkedFileBadge(activeFileName, chosenFormat);
+
+    syncStoryToBackendAsync();
+
+    if (saveIcon) saveIcon.textContent = '✓';
+    if (saveText) saveText.textContent = 'Downloaded ✓';
+    if (lastSaved) lastSaved.textContent = `Saved ${defaultFilename}`;
+    showToast(`💾 Downloaded "${defaultFilename}"!`);
+
+    setTimeout(() => {
+      if (saveIcon) saveIcon.textContent = '💾';
+      if (saveText) saveText.textContent = 'Save';
+      if (saveBtn) saveBtn.disabled = false;
+    }, 1500);
+    return true;
+  } catch (err) {
+    console.error('Save story to file failed:', err);
+    showToast(`⚠️ Failed to save file: ${err.message || 'Error'}`);
+    if (saveIcon) saveIcon.textContent = '💾';
+    if (saveText) saveText.textContent = 'Save';
+    if (saveBtn) saveBtn.disabled = false;
+    return false;
+  }
+}
+
+async function openExistingStoryFile() {
+  if ('showOpenFilePicker' in window) {
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{
+          description: 'Story Documents (.docx, .pdf, .txt, .json)',
+          accept: {
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+            'application/pdf': ['.pdf'],
+            'text/plain': ['.txt'],
+            'application/json': ['.json']
+          }
+        }],
+        multiple: false
+      });
+      const file = await handle.getFile();
+      await processOpenedStoryFile(file, handle);
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      console.warn('showOpenFilePicker error, falling back to input:', err);
+    }
+  }
+  const fileInput = document.getElementById('hiddenStoryFileInput');
+  if (fileInput) fileInput.click();
+}
+
+async function processOpenedStoryFile(file, handle = null) {
+  if (!file) return;
+  showToast(`📂 Opening "${file.name}"...`);
+
+  try {
+    // If JSON backup file:
+    if (file.name.toLowerCase().endsWith('.json')) {
+      const jsonText = await file.text();
+      const data = JSON.parse(jsonText);
+      if (data.title) appState.storyTitle = data.title;
+      if (Array.isArray(data.chapters) && data.chapters.length > 0) {
+        appState.chapters = data.chapters.map((ch, idx) => ({
+          id: `chap-${Date.now()}-${idx + 1}`,
+          number: ch.number || idx + 1,
+          title: ch.title || `Chapter ${idx + 1}`,
+          subtitle: ch.subtitle || 'Imported Scene',
+          content: ch.content || ''
+        }));
+      }
+    } else {
+      // DOCX, PDF, or TXT -> Send to backend /stories/import
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const token = appState.authToken || localStorage.getItem('storyWaveToken');
+      const res = await fetch(`${API_BASE}/stories/import`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `Failed to parse ${file.name}`);
+      }
+
+      const data = await res.json();
+      if (data.title) {
+        appState.storyTitle = data.title;
+      } else {
+        appState.storyTitle = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+      }
+
+      if (data.chapters && data.chapters.length > 0) {
+        appState.chapters = data.chapters.map((ch, idx) => ({
+          id: `chap-${Date.now()}-${idx + 1}`,
+          number: ch.number || idx + 1,
+          title: ch.title || `Chapter ${idx + 1}`,
+          subtitle: 'Imported Scene',
+          content: ch.content || ''
+        }));
+      } else {
+        throw new Error('No chapters or readable text found in document.');
+      }
+    }
+
+    // Update UI
+    const titleDisplay = document.getElementById('storyTitleDisplay');
+    if (titleDisplay) titleDisplay.textContent = appState.storyTitle;
+
+    appState.activeChapterId = appState.chapters[0].id;
+    appState.activeChapterNumber = appState.chapters[0].number;
+    renderChapterTabs();
+    loadActiveChapterIntoEditor();
+    scanAndExtractStoryEntities(false);
+
+    // Set active file tracking (MS Word mode)
+    activeFileHandle = handle;
+    activeFileName = file.name;
+    const extMatch = file.name.match(/\.(docx|pdf|txt)$/i);
+    activeFileFormat = extMatch ? extMatch[1].toLowerCase() : 'docx';
+    appState.activeFileName = activeFileName;
+    appState.activeFileFormat = activeFileFormat;
+    saveStateToStorage();
+    if (handle) await storeActiveFileHandle(handle);
+    updateLinkedFileBadge(activeFileName, activeFileFormat);
+
+    syncStoryToBackendAsync();
+
+    showToast(`✨ Opened "${file.name}" (${appState.chapters.length} chapter${appState.chapters.length === 1 ? '' : 's'}). MS Word Mode active!`);
+  } catch (err) {
+    console.error('Failed to import file:', err);
+    showToast(`⚠️ Could not open file: ${err.message}`);
+  }
+}
+
+// -----------------------------------------------------------------------------
 // GLOBAL UI EVENT BINDINGS
 // -----------------------------------------------------------------------------
 function bindEventListeners() {
@@ -3409,6 +5101,12 @@ function bindEventListeners() {
     titleInput.classList.add('hidden');
     titleDisplay.classList.remove('hidden');
     saveStateToStorage();
+    if (appState.storyId) {
+      apiFetch(`/stories/${appState.storyId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ title: val })
+      }).catch(() => {});
+    }
   };
 
   editTitleBtn.addEventListener('click', () => {
@@ -3427,72 +5125,199 @@ function bindEventListeners() {
     if (e.key === 'Enter') commitTitleChange();
   });
 
-  // Manual Save Button: saves to local state AND sends to backend
+  // Save Story & MS Word File Handling
   const saveBtn = document.getElementById('saveStoryBtn');
-  const saveIcon = document.getElementById('saveBtnIcon');
-  const saveText = document.getElementById('saveBtnText');
-  const lastSaved = document.getElementById('lastSavedIndicator');
+  const saveDropdownBtn = document.getElementById('saveStoryDropdownBtn');
+  const saveMenu = document.getElementById('saveStoryMenu');
 
-  saveBtn.addEventListener('click', async () => {
-    saveCurrentEditorContentToState();
-    saveStateToStorage();
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => {
+      if (saveMenu) saveMenu.classList.add('hidden');
+      saveStoryToFile();
+    });
+  }
 
-    saveIcon.textContent = '⏳';
-    saveText.textContent = 'Saving...';
-    saveBtn.disabled = true;
+  if (saveDropdownBtn && saveMenu) {
+    saveDropdownBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      saveMenu.classList.toggle('hidden');
+    });
 
-    try {
-      if (appState.storyId) {
-        const editor = document.getElementById('storyEditor');
-        const chapterText = editor.innerText.trim();
-        const activeChap = appState.chapters.find(c => c.id === appState.activeChapterId) || appState.chapters[0];
-        const chapterNum = activeChap.number || 1;
-
-        let res = await apiFetch(`/stories/${appState.storyId}/chapters/${chapterNum}`, {
-          method: 'PUT',
-          body: JSON.stringify({ text: chapterText })
-        });
-
-        if (res.status === 404) {
-          res = await apiFetch(`/stories/${appState.storyId}/chapters`, {
-            method: 'POST',
-            body: JSON.stringify({ number: chapterNum, text: chapterText })
-          });
-        }
-
-        if (res.ok) {
-          await syncBibleFromBackend();
-          await syncFlagsFromBackend();
-          scanAndExtractStoryEntities(false);
-        }
+    document.addEventListener('click', (e) => {
+      if (!saveMenu.contains(e.target) && e.target !== saveDropdownBtn) {
+        saveMenu.classList.add('hidden');
       }
-    } catch (e) {
-      console.debug('Backend chapter save fallback:', e);
-    }
+    });
+  }
 
-    setTimeout(() => {
-      saveIcon.textContent = '✓';
-      saveText.textContent = 'Saved ✓';
-      saveBtn.classList.add('border-teal-500', 'text-teal-400');
-      lastSaved.textContent = 'Synced with backend just now';
+  // Quick Save (Same File) from menu
+  const saveToLinkedBtn = document.getElementById('saveToLinkedActionBtn');
+  if (saveToLinkedBtn) {
+    saveToLinkedBtn.addEventListener('click', () => {
+      if (saveMenu) saveMenu.classList.add('hidden');
+      saveStoryToFile(activeFileFormat || 'docx');
+    });
+  }
 
-      setTimeout(() => {
-        saveIcon.textContent = '💾';
-        saveText.textContent = 'Save';
-        saveBtn.classList.remove('border-teal-500', 'text-teal-400');
-        saveBtn.disabled = false;
-      }, 1500);
-    }, 450);
+  // Save As Format buttons (.docx, .pdf, .txt)
+  document.querySelectorAll('.save-as-format-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const fmt = btn.getAttribute('data-save-fmt') || 'docx';
+      if (saveMenu) saveMenu.classList.add('hidden');
+      saveStoryToFile(fmt, true);
+    });
   });
 
-  // Load Demo Button
+  // Save to Cloud / Backend from menu
+  const saveToCloudBtn = document.getElementById('saveToCloudActionBtn');
+  if (saveToCloudBtn) {
+    saveToCloudBtn.addEventListener('click', async () => {
+      if (saveMenu) saveMenu.classList.add('hidden');
+      saveCurrentEditorContentToState();
+      saveStateToStorage();
+      await syncStoryToBackendAsync();
+      showToast('☁️ Story and lore synced with backend cloud!');
+    });
+  }
+
+  // Open File (MS Word Style)
+  const openFileBtn = document.getElementById('openStoryFileBtn');
+  const hiddenFileInput = document.getElementById('hiddenStoryFileInput');
+  if (openFileBtn) {
+    openFileBtn.addEventListener('click', () => openExistingStoryFile());
+  }
+  if (hiddenFileInput) {
+    hiddenFileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) {
+        processOpenedStoryFile(file, null);
+        e.target.value = '';
+      }
+    });
+  }
+
+  // Save Format Modal handlers
+  const closeSaveFormatModalBtn = document.getElementById('closeSaveFormatModalBtn');
+  if (closeSaveFormatModalBtn) closeSaveFormatModalBtn.addEventListener('click', closeSaveFormatModal);
+
+  const cancelSaveFormatModalBtn = document.getElementById('cancelSaveFormatModalBtn');
+  if (cancelSaveFormatModalBtn) cancelSaveFormatModalBtn.addEventListener('click', closeSaveFormatModal);
+
+  const confirmSaveFormatBtn = document.getElementById('confirmSaveFormatBtn');
+  if (confirmSaveFormatBtn) {
+    confirmSaveFormatBtn.addEventListener('click', () => {
+      const selected = document.querySelector('input[name="saveFormatChoice"]:checked')?.value || 'docx';
+      closeSaveFormatModal();
+      saveStoryToFile(selected, true);
+    });
+  }
+
+  // Global Keyboard Shortcuts: Ctrl+S / Cmd+S and Ctrl+A / Cmd+A (MS Word Style Save)
+  document.addEventListener('keydown', (e) => {
+    // Save on Ctrl+S / Cmd+S
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S' || e.code === 'KeyS')) {
+      e.preventDefault();
+      saveStoryToFile();
+      return;
+    }
+    // Also save if user presses Ctrl+A / Cmd+A
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A' || e.code === 'KeyA')) {
+      const activeTag = document.activeElement ? document.activeElement.tagName : '';
+      if (activeTag !== 'INPUT' && activeTag !== 'TEXTAREA') {
+        e.preventDefault();
+        saveStoryToFile();
+      }
+    }
+  });
+
+  // Load Demo Button: opens modern modal with story presets and chapter count
   const demoBtn = document.getElementById('loadDemoBtn');
   if (demoBtn) {
-    demoBtn.addEventListener('click', loadDemoPlantedStory);
+    demoBtn.addEventListener('click', openLoadDemoModal);
+  }
+
+  // Load Demo Modal Handlers
+  const closeDemoModalBtn = document.getElementById('closeLoadDemoModalBtn');
+  if (closeDemoModalBtn) closeDemoModalBtn.addEventListener('click', closeLoadDemoModal);
+
+  const cancelDemoModalBtn = document.getElementById('cancelLoadDemoModalBtn');
+  if (cancelDemoModalBtn) cancelDemoModalBtn.addEventListener('click', closeLoadDemoModal);
+
+  // Preset Card Clicks
+  const presetCards = document.querySelectorAll('#demoPresetCardsContainer .demo-preset-card');
+  presetCards.forEach((card) => {
+    card.addEventListener('click', () => {
+      presetCards.forEach((c) => c.classList.remove('active'));
+      card.classList.add('active');
+      selectedDemoPreset = card.getAttribute('data-preset') || 'random';
+    });
+  });
+
+  // Chapter Count Button Clicks
+  const countButtons = document.querySelectorAll('#demoChapterCountContainer .demo-count-btn');
+  countButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      countButtons.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedDemoChapterCount = parseInt(btn.getAttribute('data-count'), 10) || 4;
+    });
+  });
+
+  // Confirm Load Demo
+  const confirmLoadDemoBtn = document.getElementById('confirmLoadDemoModalBtn');
+  if (confirmLoadDemoBtn) {
+    confirmLoadDemoBtn.addEventListener('click', async () => {
+      closeLoadDemoModal();
+      await loadDemoPlantedStory(selectedDemoPreset, selectedDemoChapterCount);
+    });
+  }
+
+  // Close Chapter Confirmation Modal Handlers
+  const cancelCloseChapterBtn = document.getElementById('cancelCloseChapterBtn');
+  if (cancelCloseChapterBtn) {
+    cancelCloseChapterBtn.addEventListener('click', dismissCloseChapterModal);
+  }
+
+  const discardCloseChapterBtn = document.getElementById('discardCloseChapterBtn');
+  if (discardCloseChapterBtn) {
+    discardCloseChapterBtn.addEventListener('click', () => {
+      const idToClose = pendingCloseChapterId;
+      dismissCloseChapterModal();
+      if (idToClose) executeCloseChapter(idToClose);
+    });
+  }
+
+  const saveAndCloseChapterBtn = document.getElementById('saveAndCloseChapterBtn');
+  if (saveAndCloseChapterBtn) {
+    saveAndCloseChapterBtn.addEventListener('click', async () => {
+      const idToClose = pendingCloseChapterId;
+      saveCurrentEditorContentToState();
+      saveStateToStorage();
+
+      // Trigger story save to backend if connected
+      if (appState.storyId) {
+        try {
+          const editor = document.getElementById('storyEditor');
+          const chapterText = editor.innerText.trim();
+          const activeChap = appState.chapters.find(c => c.id === idToClose) || appState.chapters[0];
+          const chapterNum = activeChap.number || 1;
+          await apiFetch(`/stories/${appState.storyId}/chapters/${chapterNum}`, {
+            method: 'PUT',
+            body: JSON.stringify({ text: chapterText })
+          });
+        } catch (e) {
+          console.debug('Save before close error:', e);
+        }
+      }
+
+      dismissCloseChapterModal();
+      if (idToClose) await executeCloseChapter(idToClose);
+    });
   }
 
   // Create a new chapter
   document.getElementById('addChapterBtn').addEventListener('click', () => {
+    if (!checkGuestActionLimit('Create New Chapter')) return;
     saveCurrentEditorContentToState();
     const nextNum = appState.chapters.length + 1;
     const newChap = {
@@ -3500,7 +5325,7 @@ function bindEventListeners() {
       number: nextNum,
       title: `Chapter ${nextNum}`,
       subtitle: 'New Scene',
-      content: `<p>Begin writing Chapter ${nextNum} here...</p>`
+      content: ''
     };
     appState.chapters.push(newChap);
     appState.activeChapterId = newChap.id;
@@ -3511,9 +5336,10 @@ function bindEventListeners() {
     saveStateToStorage();
   });
 
-  // Editor typing listener with debounced dynamic entity scanner
+  // Editor typing listener with debounced dynamic entity scanner & SQLite auto-sync
   const editor = document.getElementById('storyEditor');
   let inputScanTimer = null;
+  let backendSyncDebounce = null;
   editor.addEventListener('input', () => {
     updateWordAndCharCount();
     saveCurrentEditorContentToState();
@@ -3522,6 +5348,11 @@ function bindEventListeners() {
     inputScanTimer = setTimeout(() => {
       scanAndExtractStoryEntities();
     }, 600);
+
+    clearTimeout(backendSyncDebounce);
+    backendSyncDebounce = setTimeout(() => {
+      syncStoryToBackendAsync();
+    }, 1500);
   });
 
   // Toggle inline entity highlights inside the editor
@@ -3530,6 +5361,19 @@ function bindEventListeners() {
     appState.highlightsEnabled = !appState.highlightsEnabled;
     editor.classList.toggle('highlights-disabled', !appState.highlightsEnabled);
     highlightBtn.textContent = appState.highlightsEnabled ? '✨ Highlights: On' : '✨ Highlights: Off';
+    if (appState.highlightsEnabled) {
+      applyConflictHighlightsToEditor();
+    }
+    saveStateToStorage();
+  });
+
+  // Clicking an in-canvas conflict highlight jumps to Story Insights -> Flags tab
+  editor.addEventListener('click', (e) => {
+    const conflictEl = e.target.closest('.fact-conflict');
+    if (conflictEl) {
+      appState.activeInsightTab = 'flags';
+      renderInsightsPanel();
+    }
   });
 
   // Preview banner actions

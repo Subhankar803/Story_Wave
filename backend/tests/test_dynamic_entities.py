@@ -6,6 +6,9 @@ from app.core.security import create_access_token
 from app.services import model_adapter
 
 
+from app.models.story import Story
+
+
 def test_dynamic_entity_extraction_arbitrary_characters_and_places():
     text = "Subhankar met Bithika at Kolkata station. Later they traveled towards Mumbai on Tuesday."
     facts = model_adapter.extract(text, 1)
@@ -16,28 +19,17 @@ def test_dynamic_entity_extraction_arbitrary_characters_and_places():
     assert any("Mumbai" in f.value or "Mumbai" in f.entity for f in facts)
 
 
-def test_api_bible_extracts_new_characters_and_places():
-    app = create_app()
-    client = TestClient(app)
-    token = create_access_token("1")
-    headers = {"Authorization": f"Bearer {token}"}
-
+def test_api_bible_extracts_new_characters_and_places(client: TestClient, auth_headers: dict, test_story: Story):
     # Submit a chapter with custom characters and places
-    res = client.put(
-        "/stories/1/chapters/10",
-        json={"text": "Subhankar and Bithika arrived in Kolkata before journeying to Mumbai."},
-        headers=headers,
+    res = client.post(
+        f"/stories/{test_story.id}/chapters",
+        json={"number": 1, "text": "Subhankar and Bithika arrived in Kolkata before journeying to Mumbai."},
+        headers=auth_headers,
     )
-    if res.status_code == 404:
-        res = client.post(
-            "/stories/1/chapters",
-            json={"number": 10, "text": "Subhankar and Bithika arrived in Kolkata before journeying to Mumbai."},
-            headers=headers,
-        )
     assert res.status_code in (200, 201)
 
     # Fetch Story Bible
-    bible_res = client.get("/stories/1/bible", headers=headers)
+    bible_res = client.get(f"/stories/{test_story.id}/bible", headers=auth_headers)
     assert bible_res.status_code == 200
     bible = bible_res.json()
 
