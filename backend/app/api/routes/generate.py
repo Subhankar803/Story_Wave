@@ -114,16 +114,17 @@ def speak_line(
     """Generate AI character speech with emotion-tuned prosody and context soundscape atmosphere."""
     check_rate_limit(request)
 
-    # Intelligent voice selection: detect character persona for natural human delivery
-    char_str = f"{payload.character or ''} {payload.situation or ''}".lower()
+    # Intelligent voice selection: detect character persona for natural human delivery using NumPy
+    from app.services.gender_detector import detect_character_gender
+    char_gender, detected_voice, _ = detect_character_gender(
+        character=payload.character or "",
+        situation=payload.situation or "",
+        context=payload.context or "",
+        text=payload.text or "",
+    )
     voice = payload.voice
-    if not payload.voice or payload.voice == "en-IN-NeerjaNeural":
-        if any(w in char_str for w in ("kabir", "aarav", "varun", "surya", "detective", "inspector", "father", "brother", "man", "boy", "king", "lord")):
-            voice = "en-US-ChristopherNeural"
-        elif any(w in char_str for w in ("diya", "meera", "bithika", "mother", "sister", "woman", "girl", "queen", "lady")):
-            voice = "en-US-JennyNeural"
-        else:
-            voice = "en-US-ChristopherNeural"
+    if not voice or voice in ("en-IN-NeerjaNeural", "auto", "default"):
+        voice = detected_voice
 
     service = EmotionVoiceService(db)
     audio_file = service.synthesize_speech(
@@ -162,6 +163,8 @@ def speak_line(
         soundscape_url=soundscape_data.get("soundscape_url") if soundscape_data else None,
         soundscape_volume=soundscape_data.get("soundscape_volume", fallback_vol) if soundscape_data else fallback_vol,
         soundscape_plan=soundscape_data.get("soundscape_plan") if soundscape_data else None,
+        character_gender=char_gender,
+        voice_used=voice,
     )
 
 

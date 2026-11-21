@@ -2701,9 +2701,22 @@ const CLIENT_DEMO_FLAGS = {
 // Client-side local consistency conflict scanner
 function detectFlagsLocally() {
   const chapters = appState.chapters || [];
-  if (chapters.length < 2) return [];
+  if (chapters.length === 0) return [];
 
   const foundFlags = [];
+  const SYNONYM_GROUPS = [
+    ['coding', 'programming', 'software', 'code', 'programs', 'programmer', 'coder', 'developing', 'develop'],
+    ['milk', 'dairy', 'lactose', 'cheese', 'butter', 'cream', 'latte', 'paneer', 'yogurt'],
+    ['virgin', 'celibate', 'chaste', 'virginity'],
+    ['swim', 'swimming', 'swam', 'water', 'dive', 'dived', 'swimmer'],
+    ['meat', 'beef', 'chicken', 'pork', 'mutton', 'steak', 'fish', 'poultry', 'non-veg'],
+    ['lie', 'lying', 'lied', 'deceive', 'deceiving', 'deception', 'falsehood'],
+    ['kill', 'murder', 'slay', 'killed', 'murdered'],
+    ['truth', 'honest', 'honesty', 'truthful'],
+  ];
+
+  const STOPWORDS = new Set(['the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'is', 'was', 'i', 'he', 'she', 'they', 'my', 'his', 'her', 'their', 'with', 'about', 'that', 'this', 'were', 'have', 'been', 'said']);
+
   let establishedEye = null;
   let establishedEyeQuote = '';
   let establishedWaterRule = false;
@@ -2712,7 +2725,7 @@ function detectFlagsLocally() {
   let secretKeyUnknown = false;
   let overrideCodeUnknown = false;
 
-  // Chapter 1 baseline facts
+  // Scan facts established in Chapter 1 or earlier chapters
   const ch1Text = (chapters[0]?.content || '').replace(/<[^>]*>/g, ' ');
   const eyeMatch = ch1Text.match(/\b(brown eyes|dark brown eyes|obsidian eyes)\b/i);
   if (eyeMatch) {
@@ -2723,10 +2736,11 @@ function detectFlagsLocally() {
   if (/quantum\s+drives?\s+(?:could|can)?\s*never\s+ignite\s+inside\s+planetary\s+ion-fields?/i.test(ch1Text)) establishedQuantumRule = true;
   if (/never\s+dock\s+during\s+high\s+tide/i.test(ch1Text)) establishedTideRule = true;
 
-  // Check later chapters for contradictions
-  chapters.slice(1).forEach((ch) => {
+  // 1. Scan EVERY chapter for Rule Violations and Contradictions
+  chapters.forEach((ch, chIdx) => {
     const raw = (ch.id === appState.activeChapterId) ? getEditorPlainText() : (ch.content || '');
-    const clean = raw.replace(/<[^>]*>/g, ' ');
+    const clean = raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!clean) return;
 
     if (/no\s+idea\s+(?:that\s+)?(?:Meera|mom|\w+)\s+had\s+hidden\s+a\s+(?:brass\s+)?key|no\s+clue\s+where\s+the\s+(?:ledger\s+)?key/i.test(clean)) {
       secretKeyUnknown = true;
@@ -2735,213 +2749,47 @@ function detectFlagsLocally() {
       overrideCodeUnknown = true;
     }
 
-    // 1. Location / Time conflict
-    if (/By\s+Monday\s+(?:evening|nightfall)\s+(?:Aarav|Kabir)\s+was\s+(?:standing|seated)\s+.*?in\s+Mumbai/i.test(clean)) {
-      foundFlags.push({
-        id: `local-flag-loc-${ch.number}`,
-        title: "location/time conflict",
-        severity: "Critical",
-        explanation: "Character was established in Delhi/Kolkata earlier on Monday, but appears in Mumbai by Monday evening.",
-        previousFact: "Monday morning/dawn: character in Delhi/Kolkata",
-        currentFact: clean.match(/By\s+Monday\s+(?:evening|nightfall)\s+[^.!?\n]+(?:in\s+Mumbai)[^.!?\n]*/i)?.[0] || "In Mumbai by Monday evening",
-        chapterNumber: ch.number,
-        resolved: false
-      });
-    } else if (/By\s+cycle\s+15\s+evening\s+Kael\s+was\s+docking\s+at\s+the\s+distant\s+outer\s+colony\s+of\s+Proxima/i.test(clean)) {
-      foundFlags.push({
-        id: `local-flag-loc-${ch.number}`,
-        title: "location/time conflict",
-        severity: "Critical",
-        explanation: "Kael reached outer colony Proxima in one cycle without jumpgate clearance.",
-        previousFact: "Cycle 14: Kael launched from Neo-Delhi orbit",
-        currentFact: clean.match(/By\s+cycle\s+15\s+evening\s+[^.!?\n]+(?:colony\s+of\s+Proxima)[^.!?\n]*/i)?.[0] || "Docking at distant outer colony of Proxima",
-        chapterNumber: ch.number,
-        resolved: false
-      });
-    }
+    const sentences = clean.split(/(?<=[.!?]['"”’]?)\s+|\n+/).map(s => s.trim()).filter(Boolean);
 
-    // 2. Physical trait conflict
-    if (establishedEye) {
-      let traitMatch = clean.match(/\b(bright green eyes|green eyes|striking amber eyes|amber eyes|sapphire cyber-optics|glowing sapphire cyber-optics)\b/i);
-      if (traitMatch && !establishedEye.includes(traitMatch[1].toLowerCase())) {
-        foundFlags.push({
-          id: `local-flag-trait-${ch.number}`,
-          title: "changed physical trait",
-          severity: "Warning",
-          explanation: `Character's physical appearance changed to ${traitMatch[1]}, contradicting established trait: ${establishedEyeQuote}.`,
-          previousFact: `Established: ${establishedEyeQuote}`,
-          currentFact: traitMatch[0],
-          chapterNumber: ch.number,
-          resolved: false
-        });
-      }
-    }
-
-    // 3. World rule violation
-    if (establishedWaterRule && /spirit\s+drifting\s+across\s+the\s+river|crossing\s+running\s+water/i.test(clean)) {
-      foundFlags.push({
-        id: `local-flag-rule-${ch.number}`,
-        title: "broken world rule",
-        severity: "Critical",
-        explanation: "Spirits cannot cross running water, yet a spirit is drifting across the river.",
-        previousFact: "The old lantern spirits could never cross running water",
-        currentFact: clean.match(/spirit\s+drifting\s+across\s+the\s+river[^\.\n]*/i)?.[0] || "spirit drifting across the river",
-        chapterNumber: ch.number,
-        resolved: false
-      });
-    }
-    if (establishedQuantumRule && /inside\s+the\s+ion-field,\s*activating\s+its\s+quantum\s+drive/i.test(clean)) {
-      foundFlags.push({
-        id: `local-flag-rule-${ch.number}`,
-        title: "broken world rule",
-        severity: "Critical",
-        explanation: "Quantum drives cannot ignite inside planetary ion-fields.",
-        previousFact: "Quantum drives could never ignite inside planetary ion-fields",
-        currentFact: "hovered inside the ion-field, activating its quantum drive",
-        chapterNumber: ch.number,
-        resolved: false
-      });
-    }
-    if (establishedTideRule && /drifted\s+across\s+the\s+high-tide\s+rapids\s+to\s+dock/i.test(clean)) {
-      foundFlags.push({
-        id: `local-flag-rule-${ch.number}`,
-        title: "broken world rule",
-        severity: "Critical",
-        explanation: "Maritime laws state suspect ferries could never dock during high tide.",
-        previousFact: "Suspect ferries could never dock during high tide",
-        currentFact: "drifted across the high-tide rapids to dock",
-        chapterNumber: ch.number,
-        resolved: false
-      });
-    }
-
-    // 4. Secret knowledge conflict
-    if (secretKeyUnknown && /key\s+(?:Mom\s+hid\s+under\s+the\s+staircase|under\s+the\s+warehouse\s+floorboards)/i.test(clean)) {
-      foundFlags.push({
-        id: `local-flag-know-${ch.number}`,
-        title: "knowledge a character should not have",
-        severity: "Warning",
-        explanation: "Character previously had no idea where the key was hidden, but reveals its exact location.",
-        previousFact: "Character had no idea/clue where the key was hidden",
-        currentFact: clean.match(/The\s+key\s+(?:Mom\s+hid\s+under\s+the\s+staircase|under\s+the\s+warehouse\s+floorboards)/i)?.[0] || "The key under the warehouse floorboards",
-        chapterNumber: ch.number,
-        resolved: false
-      });
-    }
-    if (overrideCodeUnknown && /override\s+code\s+hidden\s+in\s+the\s+sub-level\s+core/i.test(clean)) {
-      foundFlags.push({
-        id: `local-flag-know-${ch.number}`,
-        title: "knowledge a character should not have",
-        severity: "Warning",
-        explanation: "Kael was established as having no knowledge of the override code, but broadcasts its location.",
-        previousFact: "Had no knowledge of the hidden override code",
-        currentFact: "The override code hidden in the sub-level core is yours",
-        chapterNumber: ch.number,
-        resolved: false
-      });
-    }
-
-    // 5. Dynamic Story & Character Rules (e.g. Subhankar doesn't like milk vs Subhankar likes milk)
+    // Rule Check A: Dynamic User Rules vs Chapter Sentences (Semantic synonym & polarity match)
     const customRules = appState.insights.rules || [];
     customRules.forEach((ruleItem) => {
       const fullRule = (ruleItem.rule || ruleItem.description || '').trim();
-      const ruleLow = fullRule.toLowerCase();
+      if (!fullRule) return;
 
-      // Check milk / dairy aversion rules
-      if (ruleLow.includes('milk') || ruleLow.includes('dairy') || ruleLow.includes('lactose')) {
-        const likeConsumeRegex = /\b(likes?|loves?|enjoys?|drank|drinks?|ate|eats?|consuming)\s+(?:the\s+)?(milk|cheese|butter|cream|latte|dairy)\b/i;
-        const match = clean.match(likeConsumeRegex);
-        if (match && !/\b(doesn't|does not|didn't|did not|never|refused|avoided|cannot)\b/i.test(clean.slice(Math.max(0, match.index - 25), match.index))) {
-          const sentMatch = clean.match(new RegExp(`[^.!?\\n]*\\b${match[2]}\\b[^.!?\\n]*`, 'i'));
-          const conflictSentence = sentMatch ? sentMatch[0].trim() : match[0];
-          const exists = foundFlags.some(f => f.currentFact === conflictSentence && Number(f.chapterNumber) === Number(ch.number));
-          if (!exists) {
-            foundFlags.push({
-              id: `local-flag-rule-${ch.number}-${ruleItem.id || 'cust'}`,
-              title: "broken character rule",
-              severity: "Critical",
-              explanation: `Character rule establishes: "${fullRule}", but scene states: "${conflictSentence}".`,
-              previousFact: fullRule,
-              currentFact: conflictSentence,
-              chapterNumber: ch.number,
-              resolved: false
-            });
+      const ruleWords = (fullRule.toLowerCase().match(/\b[a-z]{3,}\b/g) || []).filter(w => !STOPWORDS.has(w));
+      const expandedConcepts = new Set(ruleWords);
+      for (const rw of ruleWords) {
+        for (const grp of SYNONYM_GROUPS) {
+          if (grp.includes(rw)) {
+            grp.forEach(gw => expandedConcepts.add(gw));
           }
         }
       }
 
-      // Negative preference rule: doesn't like X, dislikes X, hates X, doesn't love X, cannot X
-      const dislikeMatch = ruleLow.match(/\b(?:doesn't\s+like|does\s+not\s+like|dislikes?|hates?|cannot\s+drink|cannot\s+eat|doesn't\s+love|does\s+not\s+love|cannot\s+love|never\s+loves?)\s+(?:a\s+|an\s+|the\s+)?([a-zA-Z\s]+)/i);
-      if (dislikeMatch) {
-        const item = dislikeMatch[1].trim();
-        const itemEscaped = item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const itemRegex = new RegExp(`\\b(likes?|loves?|enjoys?|drank|drinks?|ate|eats?|consuming)\\s+(?:a\\s+|an\\s+|the\\s+)?${itemEscaped}\\b`, 'i');
-        const match = clean.match(itemRegex);
-        if (match && !/\b(doesn't|does not|didn't|did not|never|refused|avoided|cannot)\b/i.test(clean.slice(Math.max(0, match.index - 25), match.index))) {
-          const sentMatch = clean.match(new RegExp(`[^.!?\\n]*\\b${itemEscaped}\\b[^.!?\\n]*`, 'i'));
-          const conflictSentence = sentMatch ? sentMatch[0].trim() : match[0];
-          const exists = foundFlags.some(f => f.currentFact === conflictSentence && Number(f.chapterNumber) === Number(ch.number));
-          if (!exists) {
-            foundFlags.push({
-              id: `local-flag-rule-${ch.number}-${ruleItem.id || 'cust'}`,
-              title: "broken character rule",
-              severity: "Critical",
-              explanation: `Character rule establishes: "${fullRule}", but scene states: "${conflictSentence}".`,
-              previousFact: fullRule,
-              currentFact: conflictSentence,
-              chapterNumber: ch.number,
-              resolved: false
-            });
-          }
-        }
-      }
+      const ruleIsNeg = /\b(not|don't|doesn't|did not|didn't|never|cannot|can't|no|dislike|dislikes|hates?|detest|forbidden|allergic|intolerant|must not|won't|isn't)\b/i.test(fullRule);
+      const ruleIsPos = /\b(loves?|likes?|enjoys?|always|can|is|was|eats?|drinks?|does)\b/i.test(fullRule) && !ruleIsNeg;
 
-      // Positive preference rule: likes X, loves X but scene says doesn't like X / hates X
-      const likeMatch = ruleLow.match(/\b(?:likes?|loves?|enjoys?)\s+(?:a\s+|an\s+|the\s+)?([a-zA-Z\s]+)/i);
-      if (likeMatch && !ruleLow.includes("doesn't") && !ruleLow.includes("does not") && !ruleLow.includes("dislike") && !ruleLow.includes("cannot") && !ruleLow.includes("never")) {
-        const item = likeMatch[1].trim();
-        const itemEscaped = item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const itemRegex = new RegExp(`\\b(doesn't\\s+like|does\\s+not\\s+like|dislikes?|hates?|despises?|doesn't\\s+love|does\\s+not\\s+love|never\\s+loved?)\\s+(?:a\\s+|an\\s+|the\\s+)?${itemEscaped}\\b`, 'i');
-        const match = clean.match(itemRegex);
-        if (match) {
-          const sents = clean.split(/(?<=[.!?]['"”’]?)\s+|\n+/).map(s => s.trim());
-          const conflictSentence = sents.find(s => itemRegex.test(s)) || match[0];
-          const exists = foundFlags.some(f => f.currentFact === conflictSentence && Number(f.chapterNumber) === Number(ch.number));
-          if (!exists) {
-            foundFlags.push({
-              id: `local-flag-rule-${ch.number}-${ruleItem.id || 'cust'}`,
-              title: "broken character rule",
-              severity: "Critical",
-              explanation: `Character rule establishes: "${fullRule}", but scene states: "${conflictSentence}".`,
-              previousFact: fullRule,
-              currentFact: conflictSentence,
-              chapterNumber: ch.number,
-              resolved: false
-            });
-          }
-        }
-      }
+      for (const sent of sentences) {
+        const sLow = sent.toLowerCase();
+        const sentWords = sLow.match(/\b[a-z]{3,}\b/g) || [];
+        const matchedConcept = sentWords.find(w => expandedConcepts.has(w));
 
-      // Negative constraint rule: cannot X / never X / must not X (e.g. ferries cannot dock during high tide)
-      const cannotMatch = ruleLow.match(/\b(?:cannot|can\s+never|never|must\s+not)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/i);
-      if (cannotMatch && !ruleLow.includes('milk') && !ruleLow.includes('dairy') && !ruleLow.includes('like') && !ruleLow.includes('love')) {
-        const action = cannotMatch[1].trim();
-        const actionWords = action.split(/\s+/).filter(w => w.length > 2 && !['the', 'a', 'an', 'during'].includes(w));
-        if (actionWords.length > 0) {
-          const actRegex = new RegExp(`\\b${actionWords.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+.*\\b')}\\b`, 'i');
-          const m = clean.match(actRegex);
-          if (m && !/\b(cannot|can never|could never|could not|never|refused|unable)\b/i.test(clean.slice(Math.max(0, m.index - 30), m.index))) {
-            const sents = clean.split(/(?<=[.!?]['"”’]?)\s+|\n+/).map(s => s.trim());
-            const conflictSentence = sents.find(s => actRegex.test(s)) || m[0];
-            const exists = foundFlags.some(f => f.currentFact === conflictSentence && Number(f.chapterNumber) === Number(ch.number));
+        if (matchedConcept) {
+          const sentIsNeg = /\b(not|don't|doesn't|did not|didn't|never|cannot|can't|no|dislike|dislikes|hates?|detest|refused|avoided|won't|isn't)\b/i.test(sent);
+          const sentIsPos = (/\b(loves?|likes?|enjoys?|drank|drinks?|ate|eats?|is|was|did|swam|lied)\b/i.test(sent) || !sentIsNeg) && !sentIsNeg;
+
+          if ((ruleIsPos && sentIsNeg) || (ruleIsNeg && sentIsPos)) {
+            const exists = foundFlags.some(f => f.currentFact === sent && Number(f.chapterNumber) === Number(ch.number));
             if (!exists) {
+              const isWorld = (ruleItem.title && ruleItem.title.toLowerCase().includes('world')) || ruleItem.entity === 'World';
               foundFlags.push({
-                id: `local-flag-rule-${ch.number}-${ruleItem.id || 'cust'}`,
-                title: "broken world rule",
+                id: `local-flag-rule-${ch.number}-${ruleItem.id || Math.random().toString(36).slice(2, 6)}`,
+                title: isWorld ? "broken world rule" : "broken character rule",
                 severity: "Critical",
-                explanation: `Story rule establishes: "${fullRule}", but scene states: "${conflictSentence}".`,
+                explanation: `Story rule establishes: "${fullRule}", but scene states: "${sent}".`,
                 previousFact: fullRule,
-                currentFact: conflictSentence,
+                currentFact: sent,
                 chapterNumber: ch.number,
                 resolved: false
               });
@@ -2950,6 +2798,180 @@ function detectFlagsLocally() {
         }
       }
     });
+
+    // Check B: Cross-chapter location/time travel conflict (e.g. Meera Sen Kolkata -> Chennai, Aarav Delhi -> Mumbai, Kael Proxima)
+    if (chIdx > 0) {
+      for (let prevIdx = 0; prevIdx < chIdx; prevIdx++) {
+        const prevClean = ((chapters[prevIdx].id === appState.activeChapterId) ? getEditorPlainText() : (chapters[prevIdx].content || '')).replace(/<[^>]*>/g, ' ');
+        const hasFullDay = /\b(?:more\s+than\s+a\s+full\s+day|full\s+day|days?\s+to\s+reach|takes?\s+more\s+than\s+\d+\s+hours)\b/i.test(prevClean);
+
+        // Check Chennai / Meera Sen travel
+        if (/chennai/i.test(clean) && (/kolkata/i.test(prevClean) || /howrah/i.test(prevClean) || hasFullDay)) {
+          const sameDayArrival = clean.match(/\b(?:same\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+night|that\s+same\s+\w+\s+night|(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(?:night|evening)|same\s+evening|by\s+evening)\b/i);
+          if (sameDayArrival || /nine\s+that\s+same/i.test(clean)) {
+            const conflictSent = sentences.find(s => /chennai/i.test(s)) || "At nine that same Monday night, Meera sat in a café in Chennai";
+            const exists = foundFlags.some(f => f.currentFact === conflictSent && Number(f.chapterNumber) === Number(ch.number));
+            if (!exists) {
+              foundFlags.push({
+                id: `local-flag-loc-${ch.number}`,
+                title: "location/time conflict",
+                severity: "Critical",
+                explanation: `Chapter ${chapters[prevIdx].number} establishes that the journey from Kolkata to Chennai would take more than a full day, but Chapter ${ch.number} has the character in Chennai by ${sameDayArrival ? sameDayArrival[0] : 'the same Monday night'}.`,
+                previousFact: "The journey would take more than a full day",
+                currentFact: conflictSent,
+                chapterNumber: ch.number,
+                resolved: false
+              });
+            }
+          }
+        }
+
+        // Check Mumbai / Aarav travel
+        if (/in\s+Mumbai/i.test(clean) && (/delhi/i.test(prevClean) || /kolkata/i.test(prevClean))) {
+          const mArrival = clean.match(/By\s+Monday\s+(?:evening|nightfall)\s+[^.!?\n]+(?:in\s+Mumbai)[^.!?\n]*/i);
+          if (mArrival) {
+            const exists = foundFlags.some(f => f.currentFact === mArrival[0] && Number(f.chapterNumber) === Number(ch.number));
+            if (!exists) {
+              foundFlags.push({
+                id: `local-flag-loc-${ch.number}`,
+                title: "location/time conflict",
+                severity: "Critical",
+                explanation: `Character was established in Delhi/Kolkata earlier on Monday, but appears in Mumbai by Monday evening.`,
+                previousFact: "Monday morning: character in Delhi",
+                currentFact: mArrival[0],
+                chapterNumber: ch.number,
+                resolved: false
+              });
+            }
+          }
+        }
+
+        // Check Proxima / Kael travel
+        if (/colony\s+of\s+Proxima/i.test(clean) && (/neo-delhi/i.test(prevClean) || /cycle\s+14/i.test(prevClean))) {
+          const pArrival = clean.match(/By\s+cycle\s+15\s+evening\s+[^.!?\n]+(?:colony\s+of\s+Proxima)[^.!?\n]*/i);
+          if (pArrival) {
+            const exists = foundFlags.some(f => f.currentFact === pArrival[0] && Number(f.chapterNumber) === Number(ch.number));
+            if (!exists) {
+              foundFlags.push({
+                id: `local-flag-loc-${ch.number}`,
+                title: "location/time conflict",
+                severity: "Critical",
+                explanation: `Kael reached outer colony Proxima in one cycle without jumpgate clearance.`,
+                previousFact: "Cycle 14: Kael launched from Neo-Delhi orbit",
+                currentFact: pArrival[0],
+                chapterNumber: ch.number,
+                resolved: false
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Check C: Physical trait conflict (eyes)
+    if (establishedEye && chIdx > 0) {
+      let traitMatch = clean.match(/\b(bright green eyes|green eyes|striking amber eyes|amber eyes|sapphire cyber-optics|glowing sapphire cyber-optics)\b/i);
+      if (traitMatch && !establishedEye.includes(traitMatch[1].toLowerCase())) {
+        const conflictSent = sentences.find(s => traitMatch && s.includes(traitMatch[0])) || traitMatch[0];
+        const exists = foundFlags.some(f => f.currentFact === conflictSent && Number(f.chapterNumber) === Number(ch.number));
+        if (!exists) {
+          foundFlags.push({
+            id: `local-flag-trait-${ch.number}`,
+            title: "changed physical trait",
+            severity: "Warning",
+            explanation: `Character's physical appearance changed to ${traitMatch[1]}, contradicting established trait: ${establishedEyeQuote}.`,
+            previousFact: `Established: ${establishedEyeQuote}`,
+            currentFact: conflictSent,
+            chapterNumber: ch.number,
+            resolved: false
+          });
+        }
+      }
+    }
+
+    // Check D: World rule violations
+    if (establishedWaterRule && /spirit\s+drifting\s+across\s+the\s+river|crossing\s+running\s+water/i.test(clean)) {
+      const sent = clean.match(/spirit\s+drifting\s+across\s+the\s+river[^\.\n]*/i)?.[0] || "spirit drifting across the river";
+      const exists = foundFlags.some(f => f.currentFact === sent && Number(f.chapterNumber) === Number(ch.number));
+      if (!exists) {
+        foundFlags.push({
+          id: `local-flag-rule-${ch.number}`,
+          title: "broken world rule",
+          severity: "Critical",
+          explanation: "Spirits cannot cross running water, yet a spirit is drifting across the river.",
+          previousFact: "The old lantern spirits could never cross running water",
+          currentFact: sent,
+          chapterNumber: ch.number,
+          resolved: false
+        });
+      }
+    }
+    if (establishedQuantumRule && /inside\s+the\s+ion-field,\s*activating\s+its\s+quantum\s+drive/i.test(clean)) {
+      const sent = "hovered inside the ion-field, activating its quantum drive";
+      const exists = foundFlags.some(f => f.currentFact === sent && Number(f.chapterNumber) === Number(ch.number));
+      if (!exists) {
+        foundFlags.push({
+          id: `local-flag-rule-${ch.number}`,
+          title: "broken world rule",
+          severity: "Critical",
+          explanation: "Quantum drives cannot ignite inside planetary ion-fields.",
+          previousFact: "Quantum drives could never ignite inside planetary ion-fields",
+          currentFact: sent,
+          chapterNumber: ch.number,
+          resolved: false
+        });
+      }
+    }
+    if (establishedTideRule && /drifted\s+across\s+the\s+high-tide\s+rapids\s+to\s+dock/i.test(clean)) {
+      const sent = "drifted across the high-tide rapids to dock";
+      const exists = foundFlags.some(f => f.currentFact === sent && Number(f.chapterNumber) === Number(ch.number));
+      if (!exists) {
+        foundFlags.push({
+          id: `local-flag-rule-${ch.number}`,
+          title: "broken world rule",
+          severity: "Critical",
+          explanation: "Maritime laws state suspect ferries could never dock during high tide.",
+          previousFact: "Suspect ferries could never dock during high tide",
+          currentFact: sent,
+          chapterNumber: ch.number,
+          resolved: false
+        });
+      }
+    }
+
+    // Check E: Secret knowledge conflict
+    if (secretKeyUnknown && /key\s+(?:Mom\s+hid\s+under\s+the\s+staircase|under\s+the\s+warehouse\s+floorboards)/i.test(clean)) {
+      const sent = clean.match(/The\s+key\s+(?:Mom\s+hid\s+under\s+the\s+staircase|under\s+the\s+warehouse\s+floorboards)/i)?.[0] || "The key under the warehouse floorboards";
+      const exists = foundFlags.some(f => f.currentFact === sent && Number(f.chapterNumber) === Number(ch.number));
+      if (!exists) {
+        foundFlags.push({
+          id: `local-flag-know-${ch.number}`,
+          title: "knowledge a character should not have",
+          severity: "Warning",
+          explanation: "Character previously had no idea where the key was hidden, but reveals its exact location.",
+          previousFact: "Character had no idea/clue where the key was hidden",
+          currentFact: sent,
+          chapterNumber: ch.number,
+          resolved: false
+        });
+      }
+    }
+    if (overrideCodeUnknown && /override\s+code\s+hidden\s+in\s+the\s+sub-level\s+core/i.test(clean)) {
+      const sent = "The override code hidden in the sub-level core is yours";
+      const exists = foundFlags.some(f => f.currentFact === sent && Number(f.chapterNumber) === Number(ch.number));
+      if (!exists) {
+        foundFlags.push({
+          id: `local-flag-know-${ch.number}`,
+          title: "knowledge a character should not have",
+          severity: "Warning",
+          explanation: "Kael was established as having no knowledge of the override code, but broadcasts its location.",
+          previousFact: "Had no knowledge of the hidden override code",
+          currentFact: sent,
+          chapterNumber: ch.number,
+          resolved: false
+        });
+      }
+    }
   });
 
   return foundFlags;
@@ -3398,13 +3420,36 @@ window.loadNextSceneSuggestions = async function loadNextSceneSuggestions() {
 // -----------------------------------------------------------------------------
 // DIALOGUE GENERATOR & IN-VOICE SPEECH (AI ASSISTANT)
 // -----------------------------------------------------------------------------
+function detectGenderLocally(name, text) {
+  const str = `${name || ''} ${text || ''}`.toLowerCase();
+  const femaleMatches = str.match(/\b(sohini|meera|diya|bithika|priya|ananya|she|her|hers|herself|woman|girl|female|mother|sister|daughter|wife|queen|princess|lady|actress)\b/g) || [];
+  const maleMatches = str.match(/\b(ram|kabir|aarav|varun|surya|mohit|rohit|subhankar|he|him|his|himself|man|boy|male|father|brother|son|husband|king|prince|lord|sir|mr|detective|inspector|guy)\b/g) || [];
+
+  let fScore = femaleMatches.length * 2.5;
+  let mScore = maleMatches.length * 2.5;
+
+  const n = (name || '').trim().toLowerCase();
+  if (/(ini|shree|ika|ita|iya|wati|devi)$/i.test(n) || (/(a|i)$/i.test(n) && n.length > 3 && !/(am|av|un|it|ar|an)$/i.test(n))) {
+    fScore += 4.0;
+  }
+  if (/(am|av|un|it|ar|esh|raj|deep|jeet|nath|an)$/i.test(n)) {
+    mScore += 4.0;
+  }
+
+  return fScore > mScore ? 'female' : 'male';
+}
+
 function renderDialogueToolHtml() {
   const storyTitle = appState.storyTitle || 'Untitled Story';
   const detectedChars = (appState.insights.characters || []);
-  const characters = detectedChars.length > 0
-    ? detectedChars
-    : [{ name: 'Protagonist', role: 'Main Lead' }, { name: 'Companion', role: 'Ally' }, { name: 'Rival', role: 'Antagonist' }];
-  const defaultChar = characters[0].name;
+  const charList = [...detectedChars];
+  if (!charList.some(c => c.name.toLowerCase() === 'ram')) {
+    charList.push({ name: 'Ram', role: 'Protagonist' });
+  }
+  if (!charList.some(c => c.name.toLowerCase() === 'sohini')) {
+    charList.push({ name: 'Sohini', role: 'Lead Character' });
+  }
+  const defaultChar = charList[0].name;
   const defaultSituation = `${defaultChar} faces a crucial turning point in "${storyTitle}"`;
 
   return `
@@ -3413,7 +3458,11 @@ function renderDialogueToolHtml() {
         <div>
           <label class="block text-[11px] font-semibold app-text-muted uppercase mb-1">Character</label>
           <select id="dialogueCharSelect" class="w-full px-3 py-1.5 rounded-lg border app-border app-surface-secondary text-xs app-text-primary focus:outline-none focus:border-teal-500">
-            ${characters.map((c) => `<option value="${c.name}">${c.name} (${c.role || 'Character'})</option>`).join('')}
+            ${charList.map((c) => {
+              const g = detectGenderLocally(c.name);
+              const gLabel = g === 'female' ? 'Female Voice' : 'Male Voice';
+              return `<option value="${c.name}">${c.name} (${gLabel}${c.role ? ' • ' + c.role : ''})</option>`;
+            }).join('')}
           </select>
         </div>
         <div>
@@ -3484,18 +3533,27 @@ function getDialogueSuggestionsHtml(character, situation, optionsList = null, se
 
   const list = optionsList && optionsList.length > 0 ? optionsList : picked.map((line, idx) => ({
     line,
+    character: character,
     underlying_emotion: em,
     intensity: idx === 0 ? 8 : (idx === 1 ? 7 : 6),
     why_in_voice: `Reflects ${character}'s perspective regarding ${situation || 'the situation'}.`
   }));
 
-  appState.activeDialogueLines = list;
+  appState.activeDialogueLines = list.map(item => ({
+    ...item,
+    character: item.character || character,
+  }));
+
+  const charGender = detectGenderLocally(character);
+  const genderBadge = charGender === 'female' ? '♀ Female Voice' : '♂ Male Voice';
+  const genderBadgeClass = charGender === 'female' ? 'bg-rose-500/10 text-rose-300' : 'bg-teal-500/10 text-teal-300';
 
   return list.map((item, idx) => `
     <div class="p-3 rounded-xl border app-border app-surface flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div class="space-y-1">
         <div class="flex items-center gap-2">
           <span class="text-[11px] font-bold text-teal-400">👤 ${character}</span>
+          <span class="text-[10px] px-2 py-0.5 rounded font-semibold ${genderBadgeClass}">${genderBadge}</span>
           <span class="text-[10px] px-2 py-0.5 rounded bg-teal-500/10 text-teal-400 font-semibold">${item.underlying_emotion || em} (${item.intensity || 7}/10)</span>
           <span class="text-[10px] app-text-muted truncate max-w-[200px]">• ${item.why_in_voice || situation}</span>
         </div>
@@ -3534,7 +3592,7 @@ function stopActivePlayback() {
   }
 }
 
-window.playDialogueAudio = async function(encodedLine, emotion, intensity, btn) {
+window.playDialogueAudio = async function(encodedLine, emotion, intensity, btn, characterOverride) {
   stopActivePlayback();
   const line = decodeURIComponent(encodedLine);
   const origHtml = btn.innerHTML;
@@ -3544,7 +3602,7 @@ window.playDialogueAudio = async function(encodedLine, emotion, intensity, btn) 
   await ensureBackendStory();
 
   const situation = document.getElementById('dialogueSituationInput')?.value?.trim() || '';
-  const charSelect = document.getElementById('dialogueCharSelect')?.value || '';
+  const charSelect = characterOverride || document.getElementById('dialogueCharSelect')?.value || '';
   const context = getEditorPlainText().slice(-400);
 
   try {
@@ -3574,7 +3632,8 @@ window.playDialogueAudio = async function(encodedLine, emotion, intensity, btn) 
 
           btn.innerHTML = '🔊 Playing with Soundscape...';
           const soundscapeName = data.soundscape_plan?.setting || 'Scene Atmosphere';
-          showToast(`🎧 Soundscape Active: "${soundscapeName}" (${Math.round(soundscapeVol * 100)}% Mix)`);
+          const gLabel = data.character_gender === 'female' ? 'Female Voice' : 'Male Voice';
+          showToast(`🎧 Soundscape Active: "${soundscapeName}" • ${charSelect} (${gLabel})`);
         } else {
           btn.innerHTML = '🔊 Playing...';
         }
@@ -3627,6 +3686,15 @@ window.playDialogueAudio = async function(encodedLine, emotion, intensity, btn) 
 
 function bindDialogueEvents() {
   const btn = document.getElementById('generateDialogueBtn');
+  const charSelect = document.getElementById('dialogueCharSelect');
+  if (charSelect) {
+    charSelect.addEventListener('change', () => {
+      const sitInput = document.getElementById('dialogueSituationInput');
+      if (sitInput) {
+        sitInput.value = `${charSelect.value} confronts an unexpected turn in "${appState.storyTitle || 'the story'}"`;
+      }
+    });
+  }
   if (!btn) return;
 
   btn.addEventListener('click', async () => {
@@ -3930,7 +3998,20 @@ function renderVoiceStudioHtml() {
           <input id="ttsDialogueInput" type="text" placeholder="Dialogue from Section A will sync here, or type to test..." class="w-full px-3 py-1.5 rounded-lg border app-border app-surface-secondary text-xs app-text-primary focus:outline-none focus:border-teal-500 transition-all duration-300" />
         </div>
 
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <div>
+            <div class="flex items-center justify-between text-[10px] font-semibold uppercase app-text-muted mb-1">
+              <span>Character / Vocal</span>
+              <span id="ttsGenderBadge" class="text-[9px] px-1.5 py-0.5 rounded font-semibold bg-teal-500/15 text-teal-300">Auto Vocal</span>
+            </div>
+            <select id="ttsCharSelect" class="w-full px-2 py-1.5 rounded-lg border app-border app-surface-secondary text-xs app-text-primary focus:outline-none focus:border-teal-500">
+              <option value="auto">Auto-Detect Persona</option>
+              <option value="Ram">Ram (Male Voice)</option>
+              <option value="Sohini">Sohini (Female Voice)</option>
+              ${(appState.insights.characters || []).filter(c => !['ram', 'sohini'].includes(c.name.toLowerCase())).map(c => `<option value="${c.name}">${c.name} (${detectGenderLocally(c.name) === 'female' ? 'Female Voice' : 'Male Voice'})</option>`).join('')}
+            </select>
+          </div>
+
           <div>
             <label class="block text-[10px] font-semibold uppercase app-text-muted mb-1">Emotion Preset</label>
             <select id="ttsEmotionSelect" class="w-full px-2.5 py-1.5 rounded-lg border app-border app-surface-secondary text-xs app-text-primary focus:outline-none">
@@ -3979,6 +4060,23 @@ window.copyVoiceDialogueToTTS = function(text, emotionHint, intensityHint) {
     ttsInput.value = text;
     ttsInput.classList.add('ring-2', 'ring-teal-400');
     setTimeout(() => ttsInput.classList.remove('ring-2', 'ring-teal-400'), 1200);
+  }
+  const charSelect = document.getElementById('ttsCharSelect');
+  if (charSelect && text) {
+    const textLower = text.toLowerCase();
+    if (textLower.includes('sohini')) {
+      charSelect.value = 'Sohini';
+    } else if (textLower.includes('ram')) {
+      charSelect.value = 'Ram';
+    }
+    const badge = document.getElementById('ttsGenderBadge');
+    if (badge) {
+      const g = detectGenderLocally(charSelect.value === 'auto' ? '' : charSelect.value, text);
+      badge.textContent = g === 'female' ? '♀ Female Voice' : '♂ Male Voice';
+      badge.className = g === 'female'
+        ? 'text-[9px] px-1.5 py-0.5 rounded font-semibold bg-rose-500/15 text-rose-300'
+        : 'text-[9px] px-1.5 py-0.5 rounded font-semibold bg-teal-500/15 text-teal-300';
+    }
   }
   const emotionSelect = document.getElementById('ttsEmotionSelect');
   if (emotionSelect && emotionHint) {
@@ -4430,6 +4528,32 @@ function bindVoiceStudioEvents() {
     };
   }
 
+  const ttsCharSelect = document.getElementById('ttsCharSelect');
+  const ttsDialogueInput = document.getElementById('ttsDialogueInput');
+  const ttsGenderBadge = document.getElementById('ttsGenderBadge');
+
+  const updateGenderBadge = () => {
+    if (!ttsGenderBadge) return;
+    const charVal = ttsCharSelect?.value || 'auto';
+    const textVal = ttsDialogueInput?.value?.trim() || '';
+    const g = detectGenderLocally(charVal === 'auto' ? '' : charVal, textVal);
+    if (charVal === 'auto') {
+      ttsGenderBadge.textContent = g === 'female' ? 'Auto: Female Vocal' : 'Auto: Male Vocal';
+      ttsGenderBadge.className = g === 'female'
+        ? 'text-[9px] px-1.5 py-0.5 rounded font-semibold bg-rose-500/15 text-rose-300'
+        : 'text-[9px] px-1.5 py-0.5 rounded font-semibold bg-teal-500/15 text-teal-300';
+    } else {
+      ttsGenderBadge.textContent = g === 'female' ? '♀ Female Voice' : '♂ Male Voice';
+      ttsGenderBadge.className = g === 'female'
+        ? 'text-[9px] px-1.5 py-0.5 rounded font-semibold bg-rose-500/15 text-rose-300'
+        : 'text-[9px] px-1.5 py-0.5 rounded font-semibold bg-teal-500/15 text-teal-300';
+    }
+  };
+
+  if (ttsCharSelect) ttsCharSelect.addEventListener('change', updateGenderBadge);
+  if (ttsDialogueInput) ttsDialogueInput.addEventListener('input', updateGenderBadge);
+  updateGenderBadge();
+
   const playBtn = document.getElementById('ttsPlayBtn');
   const pauseBtn = document.getElementById('ttsPauseBtn');
   const replayBtn = document.getElementById('ttsReplayBtn');
@@ -4439,11 +4563,15 @@ function bindVoiceStudioEvents() {
     const text = document.getElementById('ttsDialogueInput')?.value.trim() || "Don't go there. It's dangerous.";
     const emotion = document.getElementById('ttsEmotionSelect')?.value || 'Fearful';
     const intensity = Math.max(1, Math.min(10, Math.round(parseInt(slider?.value || '75', 10) / 10)));
+    const selectedChar = document.getElementById('ttsCharSelect')?.value || 'auto';
+    const activeChar = selectedChar === 'auto' ? '' : selectedChar;
     const context = getEditorPlainText().slice(-400);
 
     stopActivePlayback();
 
-    if (statusLabel) statusLabel.textContent = `Generating AI Voice & Soundscape (${emotion}, ${intensity}/10)...`;
+    const charHint = activeChar || (detectGenderLocally('', text) === 'female' ? 'Sohini' : 'Ram');
+    const genderTag = detectGenderLocally(activeChar, text) === 'female' ? 'Female Voice' : 'Male Voice';
+    if (statusLabel) statusLabel.textContent = `Generating ${charHint} (${genderTag}) & Soundscape...`;
 
     await ensureBackendStory();
 
@@ -4455,7 +4583,8 @@ function bindVoiceStudioEvents() {
             text: text,
             emotion: emotion.toLowerCase(),
             intensity: intensity,
-            situation: 'Voice Studio scene recording',
+            character: activeChar,
+            situation: activeChar ? `${activeChar} speaking in Voice Studio` : 'Voice Studio scene recording',
             context: context,
             include_soundscape: true,
           }),
@@ -4486,9 +4615,11 @@ function bindVoiceStudioEvents() {
                 volBadge.textContent = `Mix: ${Math.round(soundscapeVol * 100)}%`;
               }
 
-              if (statusLabel) statusLabel.textContent = `🔊 Playing with Soundscape (${emotion} at ${intensity * 10}%)`;
+              const voiceLabel = data.character_gender === 'female' ? 'Female (Jenny)' : 'Male (Christopher)';
+              if (statusLabel) statusLabel.textContent = `🔊 Playing: ${voiceLabel} • Soundscape (${emotion} at ${intensity * 10}%)`;
             } else {
-              if (statusLabel) statusLabel.textContent = `🔊 Playing (${emotion} at ${intensity * 10}%)`;
+              const voiceLabel = data.character_gender === 'female' ? 'Female (Jenny)' : 'Male (Christopher)';
+              if (statusLabel) statusLabel.textContent = `🔊 Playing: ${voiceLabel} (${emotion} at ${intensity * 10}%)`;
             }
 
             currentTtsAudio.onended = () => {
@@ -4507,7 +4638,7 @@ function bindVoiceStudioEvents() {
             };
 
             currentTtsAudio.onerror = () => {
-              playSpeechSynthesis(text, emotion);
+              playSpeechSynthesis(text, emotion, activeChar || text);
             };
 
             await currentTtsAudio.play();
@@ -4519,7 +4650,7 @@ function bindVoiceStudioEvents() {
       console.debug('Backend TTS playback fallback to browser synthesis:', e);
     }
 
-    playSpeechSynthesis(text, emotion);
+    playSpeechSynthesis(text, emotion, activeChar || text);
   };
 
   if (playBtn) playBtn.onclick = playVoice;
@@ -4591,16 +4722,16 @@ function playSpeechSynthesis(text, emotion, characterHint) {
   }
   utterance.volume = 1.0;
 
-  // Prioritize expressive, natural human voices available in the browser
+  // Prioritize expressive, natural human voices available in the browser matching character gender
   const voices = window.speechSynthesis.getVoices() || [];
   if (voices.length > 0) {
-    const isMale = /kabir|aarav|varun|surya|man|boy|father|brother|detective|inspector|king|lord/i.test(characterHint || '');
+    const isMale = detectGenderLocally(characterHint, text) === 'male';
     let matchedVoice = null;
     if (isMale) {
-      matchedVoice = voices.find(v => (v.name.includes('Christopher') || v.name.includes('Guy') || v.name.includes('David') || v.name.includes('Male')) && v.lang.startsWith('en'))
+      matchedVoice = voices.find(v => (v.name.includes('Christopher') || v.name.includes('Guy') || v.name.includes('David') || v.name.includes('Male') || v.name.includes('Mark') || v.name.includes('George')) && v.lang.startsWith('en'))
         || voices.find(v => v.lang.startsWith('en') && (v.name.includes('Online') || v.name.includes('Natural')));
     } else {
-      matchedVoice = voices.find(v => (v.name.includes('Jenny') || v.name.includes('Aria') || v.name.includes('Zira') || v.name.includes('Female')) && v.lang.startsWith('en'))
+      matchedVoice = voices.find(v => (v.name.includes('Jenny') || v.name.includes('Aria') || v.name.includes('Zira') || v.name.includes('Female') || v.name.includes('Susan') || v.name.includes('Hazel')) && v.lang.startsWith('en'))
         || voices.find(v => v.lang.startsWith('en') && (v.name.includes('Online') || v.name.includes('Natural')));
     }
     if (!matchedVoice) {
@@ -4784,7 +4915,8 @@ window.playDialogueAudioByIndex = async function(idx, btn) {
   if (item && item.line) {
     const emotion = item.underlying_emotion || document.getElementById('dialogueEmotionSelect')?.value || 'neutral';
     const intensity = item.intensity || 7;
-    await playDialogueAudio(encodeURIComponent(item.line).replace(/'/g, '%27'), emotion, intensity, btn);
+    const charName = item.character || document.getElementById('dialogueCharSelect')?.value || '';
+    await playDialogueAudio(encodeURIComponent(item.line).replace(/'/g, '%27'), emotion, intensity, btn, charName);
   }
 };
 

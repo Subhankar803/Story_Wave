@@ -58,6 +58,8 @@ class TTSResponse(BaseModel):
     soundscape_url: str | None = None
     soundscape_volume: float = 0.55
     soundscape_plan: dict[str, Any] | None = None
+    character_gender: str | None = None
+    voice_used: str | None = None
 
 
 class VoiceTranscribeResponse(BaseModel):

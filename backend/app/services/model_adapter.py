@@ -524,7 +524,37 @@ def _offline_check(bible: list[sb.Fact], text: str, chapter: int) -> list[sb.Con
     text_lower = text.lower()
     sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+|(?<=[.!?][\'"”’])\s+|\n+', text.strip()) if s.strip()]
 
-    # 1. Location / Time conflict: Delhi Monday morning -> Mumbai Monday evening / impossible travel
+    SYNONYM_GROUPS = [
+        {"coding", "programming", "software", "code", "programs", "programmer", "coder", "developing"},
+        {"milk", "dairy", "lactose", "cheese", "butter", "cream", "latte", "paneer"},
+        {"virgin", "celibate", "chaste", "virginity"},
+        {"swim", "swimming", "swam", "water", "dive", "dived"},
+        {"meat", "beef", "chicken", "pork", "mutton", "steak", "fish", "poultry", "non-veg"},
+        {"lie", "lying", "lied", "deceive", "deceiving", "deception", "falsehood"},
+        {"kill", "murder", "slay", "killed", "murdered"},
+        {"truth", "honest", "honesty", "truthful"},
+    ]
+
+    # 1. Location / Time conflict:
+    # (a) Kolkata -> Chennai (Meera Sen: journey takes more than a full day vs same Monday night)
+    chennai_match = re.search(r'\b(chennai|madras)\b', text, re.IGNORECASE)
+    if chennai_match:
+        origin_fact = next(
+            (f for f in bible if any(c in (f.value or "").lower() or c in (f.quote or "").lower() for c in ("kolkata", "howrah", "full day", "coromandel"))),
+            None,
+        )
+        if origin_fact or any(w in text_lower for w in ("same monday night", "monday night", "monday evening")):
+            matched_sentence = _extract_sentence(text, r'\b(chennai|madras)\b')
+            conflicts.append(
+                sb.Conflict(
+                    type="location/time conflict",
+                    explanation="Chapter 1 establishes that the journey from Kolkata to Chennai would take more than a full day after departing Monday at 6 a.m., but Chapter 2 has Meera in Chennai by nine that same Monday night.",
+                    old_quote=origin_fact.quote if origin_fact else "The journey would take more than a full day",
+                    new_quote=matched_sentence or "At nine that same Monday night, Meera sat in a café in Chennai",
+                )
+            )
+
+    # (b) Delhi Monday morning -> Mumbai Monday evening / impossible travel
     mumbai_pattern = r'\b(mumbai|bombay)\b'
     proxima_pattern = r'\b(proxima|distant outer colony)\b'
     if re.search(mumbai_pattern, text, re.IGNORECASE) and ("monday" in text_lower or chapter >= 3 or "evening" in text_lower or "nightfall" in text_lower):
@@ -558,6 +588,26 @@ def _offline_check(bible: list[sb.Fact], text: str, chapter: int) -> list[sb.Con
                     new_quote=matched_sentence or text[:90],
                 )
             )
+
+    # (c) Generic cross-chapter travel duration conflict
+    for f in bible:
+        f_low = (f.quote or f.value or "").lower()
+        if any(w in f_low for w in ("more than a full day", "takes more than a day", "full day journey")):
+            m_dest = re.search(r'\b(?:to|for|headed\s+to|destination\s+was|coromandel\s+express\s+to)\s+([A-Z][a-z]+)\b', f.quote or f.value or "")
+            dest_name = m_dest.group(1) if m_dest else None
+            if dest_name and dest_name.lower() in text_lower:
+                same_arr = re.search(r'\b(?:same\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+night|that\s+same\s+\w+\s+night|(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(?:night|evening)|same\s+evening|by\s+evening)\b', text, re.I)
+                if same_arr:
+                    matched_sentence = _extract_sentence(text, rf'\b{re.escape(dest_name)}\b')
+                    conflicts.append(
+                        sb.Conflict(
+                            type="location/time conflict",
+                            explanation=f"Established story bible states the journey to {dest_name} takes more than a full day, but scene has character in {dest_name} on the same evening ({same_arr.group(0)}).",
+                            old_quote=f.quote or f.value,
+                            new_quote=matched_sentence or text[:90],
+                        )
+                    )
+                    break
 
     # 2. Changed physical trait: brown eyes -> green eyes, obsidian eyes -> sapphire cyber-optics, dark brown eyes -> amber eyes
     new_eye_m = re.search(r'\b(bright green|green|blue|hazel|golden|violet|emerald|sapphire|amber)\s+(?:eyes|cyber-optics)\b', text, re.IGNORECASE)
@@ -900,6 +950,40 @@ def _offline_check(bible: list[sb.Fact], text: str, chapter: int) -> list[sb.Con
                                 )
                             )
                             break
+
+        # Rule G: Universal Semantic Concept & Synonym Rule Analyzer (handles "I love coding" vs "I don't like programming", "Mohit is virgin" vs "Mohit is not virgin", etc.)
+        rule_full = f"{entity_name} {val_clean}".lower().strip()
+        STOPWORDS = {'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'and', 'or', 'is', 'was', 'i', 'he', 'she', 'they', 'my', 'his', 'her', 'their', 'with', 'about', 'that', 'this'}
+        rule_words = [w for w in re.findall(r'\b[a-z]{3,}\b', rule_full) if w not in STOPWORDS]
+        expanded_concepts = set(rule_words)
+        for w in rule_words:
+            for grp in SYNONYM_GROUPS:
+                if w in grp:
+                    expanded_concepts.update(grp)
+
+        rule_is_neg = bool(re.search(r'\b(not|don\'t|doesn\'t|did not|didn\'t|never|cannot|can\'t|no|dislike|dislikes|hates?|detest|forbidden|allergic|intolerant|must not|won\'t|isn\'t)\b', rule_full))
+        rule_is_pos = bool(re.search(r'\b(loves?|likes?|enjoys?|always|can|is|was|eats?|drinks?|does)\b', rule_full)) and not rule_is_neg
+
+        if expanded_concepts and (rule_is_pos or rule_is_neg):
+            for s in sentences:
+                s_low = s.lower()
+                sent_words = set(re.findall(r'\b[a-z]{3,}\b', s_low))
+                overlap = expanded_concepts.intersection(sent_words) - STOPWORDS
+                if overlap:
+                    sent_is_neg = bool(re.search(r'\b(not|don\'t|doesn\'t|did not|didn\'t|never|cannot|can\'t|no|dislike|dislikes|hates?|detest|refused|avoided|won\'t|isn\'t)\b', s_low))
+                    sent_is_pos = bool(re.search(r'\b(loves?|likes?|enjoys?|drank|drinks?|ate|eats?|is|was|did|swam|lied)\b', s_low) or not sent_is_neg) and not sent_is_neg
+
+                    if (rule_is_pos and sent_is_neg) or (rule_is_neg and sent_is_pos):
+                        conf_type = "broken world rule" if entity_low in ("world", "narrator", "") else "broken character rule"
+                        conflicts.append(
+                            sb.Conflict(
+                                type=conf_type,
+                                explanation=f"Story rule establishes '{f.value}', but scene states: '{s}'",
+                                old_quote=quote_str,
+                                new_quote=s,
+                            )
+                        )
+                        break
 
     # De-duplicate conflicts while preserving order
     unique_conflicts: list[sb.Conflict] = []

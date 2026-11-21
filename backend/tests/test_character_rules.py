@@ -119,3 +119,38 @@ def test_rule_violation_sentence_isolated_after_dialogue_quotes():
     rule_conflicts = [c for c in conflicts if c.type == "broken character rule"]
     assert len(rule_conflicts) == 1
     assert rule_conflicts[0].new_quote == "Subhankar does not love coding"
+
+
+def test_semantic_rule_coding_vs_programming():
+    bible = [
+        sb.Fact(
+            entity="Mohit",
+            attribute="rule",
+            value="I love coding",
+            chapter=1,
+            quote="Rule established by author: I love coding",
+        )
+    ]
+    text = "In the afternoon, Mohit told his friend, I don't like programming at all."
+    conflicts = model_adapter.check(bible, text, 1)
+    rule_conflicts = [c for c in conflicts if c.type == "broken character rule"]
+    assert len(rule_conflicts) >= 1
+    assert "I don't like programming" in rule_conflicts[0].new_quote
+
+
+def test_meera_sen_travel_time_conflict():
+    bible = [
+        sb.Fact(
+            entity="Meera",
+            attribute="event",
+            value="boarded Coromandel Express to Chennai",
+            chapter=1,
+            quote="On Monday at 6 a.m. she boarded the Coromandel Express to Chennai. The journey would take more than a full day.",
+        )
+    ]
+    text = "At nine that same Monday night, Meera sat in a café in Chennai, eating a hot dosa and watching rain fall on Marina Beach."
+    conflicts = model_adapter.check(bible, text, 2)
+    travel_conflicts = [c for c in conflicts if c.type == "location/time conflict"]
+    assert len(travel_conflicts) >= 1
+    assert "Chennai" in travel_conflicts[0].explanation
+
