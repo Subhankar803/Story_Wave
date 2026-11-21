@@ -132,12 +132,28 @@ def create_app() -> FastAPI:
         def get_app():
             return FileResponse(frontend_dir / "index.html", media_type="text/html", headers=no_cache_headers)
 
+    # Mount Story Wave Soundscape API
+    try:
+        from app.services.soundscape import get_soundscape_service
+        get_soundscape_service()
+        from soundscape_app.main import app as soundscape_app
+        app.mount("/soundscape", soundscape_app)
+        logger.info("Mounted story-wave-soundscape API at /soundscape")
+    except Exception as e:
+        logger.warning(f"Could not mount soundscape app: {e}")
+
     @app.get("/audio/{filename}", include_in_schema=False)
     def get_audio(filename: str):
-        file_path = Path(tempfile.gettempdir()) / filename
-        if not file_path.exists():
+        candidates = [
+            Path(tempfile.gettempdir()) / filename,
+            Path(tempfile.gettempdir()) / "sw_soundscape_data" / "out" / filename,
+            Path(__file__).resolve().parent.parent / "story-wave-soundscape" / "data" / "out" / filename,
+        ]
+        target = next((c for c in candidates if c.exists()), None)
+        if not target:
             raise HTTPException(status_code=404, detail="Audio file not found")
-        return FileResponse(file_path, media_type="audio/mpeg")
+        media_type = "audio/wav" if filename.lower().endswith(".wav") else "audio/mpeg"
+        return FileResponse(target, media_type=media_type)
 
     @app.get("/health", tags=["Health"])
     def health_check():

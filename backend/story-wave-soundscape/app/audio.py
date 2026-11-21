@@ -2,7 +2,12 @@
 from __future__ import annotations
 
 import numpy as np
-import soundfile as sf
+
+try:
+    import soundfile as sf
+except ImportError:
+    sf = None
+import scipy.io.wavfile as wavfile
 
 
 def loop_to_duration(wav: np.ndarray, sr: int, duration: float, crossfade: float = 1.0) -> np.ndarray:
@@ -39,4 +44,8 @@ def apply_fades(wav: np.ndarray, sr: int, fade_in: float = 0.5, fade_out: float 
 
 
 def write_wav(path: str, wav: np.ndarray, sr: int) -> None:
-    sf.write(path, np.clip(wav, -1.0, 1.0), sr, subtype="PCM_16")
+    if sf is not None:
+        sf.write(path, np.clip(wav, -1.0, 1.0), sr, subtype="PCM_16")
+    else:
+        pcm = (np.clip(wav, -1.0, 1.0) * 32767).astype(np.int16)
+        wavfile.write(path, sr, pcm)

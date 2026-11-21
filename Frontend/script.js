@@ -3512,13 +3512,40 @@ function getDialogueSuggestionsHtml(character, situation, optionsList = null, se
   `).join('');
 }
 
+// Audio playback state for dialogue voice and soundscape background layer
+let activeVoiceAudio = null;
+let activeSoundscapeAudio = null;
+
+function stopActivePlayback() {
+  if (activeVoiceAudio) {
+    try { activeVoiceAudio.pause(); } catch (e) {}
+    activeVoiceAudio = null;
+  }
+  if (activeSoundscapeAudio) {
+    try { activeSoundscapeAudio.pause(); } catch (e) {}
+    activeSoundscapeAudio = null;
+  }
+  if (currentTtsAudio) {
+    try { currentTtsAudio.pause(); } catch (e) {}
+    currentTtsAudio = null;
+  }
+  if ('speechSynthesis' in window) {
+    try { window.speechSynthesis.cancel(); } catch (e) {}
+  }
+}
+
 window.playDialogueAudio = async function(encodedLine, emotion, intensity, btn) {
+  stopActivePlayback();
   const line = decodeURIComponent(encodedLine);
   const origHtml = btn.innerHTML;
-  btn.innerHTML = '⏳ Loading...';
+  btn.innerHTML = '⏳ Loading Soundscape...';
   btn.disabled = true;
 
   await ensureBackendStory();
+
+  const situation = document.getElementById('dialogueSituationInput')?.value?.trim() || '';
+  const charSelect = document.getElementById('dialogueCharSelect')?.value || '';
+  const context = getEditorPlainText().slice(-400);
 
   try {
     if (appState.storyId) {
@@ -3528,24 +3555,62 @@ window.playDialogueAudio = async function(encodedLine, emotion, intensity, btn) 
           text: line,
           emotion: (emotion || 'calm').toLowerCase(),
           intensity: intensity || 7,
+          character: charSelect,
+          situation: situation || `${charSelect} in ${appState.storyTitle || 'the story'}`,
+          context: context,
+          include_soundscape: true,
         }),
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.audio_url) {
+        const soundscapeVol = Math.max(0.50, Math.min(0.85, data.soundscape_volume || 0.60));
+
+        if (data.soundscape_url) {
+          const fullSoundscapeUrl = (data.soundscape_url.startsWith('http') ? '' : API_BASE) + data.soundscape_url;
+          activeSoundscapeAudio = new Audio(fullSoundscapeUrl);
+          activeSoundscapeAudio.volume = soundscapeVol;
+          activeSoundscapeAudio.loop = true;
+          activeSoundscapeAudio.play().catch(e => console.debug('Soundscape audio play error:', e));
+
+          btn.innerHTML = '🔊 Playing with Soundscape...';
+          const soundscapeName = data.soundscape_plan?.setting || 'Scene Atmosphere';
+          showToast(`🎧 Soundscape Active: "${soundscapeName}" (${Math.round(soundscapeVol * 100)}% Mix)`);
+        } else {
           btn.innerHTML = '🔊 Playing...';
+        }
+
+        if (data.audio_url) {
           const fullAudioUrl = (data.audio_url.startsWith('http') ? '' : API_BASE) + data.audio_url;
-          const audio = new Audio(fullAudioUrl);
-          audio.onended = () => {
+          activeVoiceAudio = new Audio(fullAudioUrl);
+
+          activeVoiceAudio.onended = () => {
+            if (activeSoundscapeAudio) {
+              const bg = activeSoundscapeAudio;
+              const fade = setInterval(() => {
+                if (bg && bg.volume > 0.03) {
+                  bg.volume = Math.max(0, bg.volume - 0.03);
+                } else {
+                  clearInterval(fade);
+                  try { bg.pause(); } catch (e) {}
+                }
+              }, 40);
+            }
             btn.innerHTML = origHtml;
             btn.disabled = false;
           };
-          audio.onerror = () => {
-            playSpeechSynthesis(line, emotion);
+
+          activeVoiceAudio.onerror = () => {
+            playSpeechSynthesis(line, emotion, charSelect);
             btn.innerHTML = origHtml;
             btn.disabled = false;
           };
-          await audio.play();
+
+          await activeVoiceAudio.play();
+          return;
+        } else {
+          playSpeechSynthesis(line, emotion, charSelect);
+          btn.innerHTML = origHtml;
+          btn.disabled = false;
           return;
         }
       }
@@ -3555,7 +3620,7 @@ window.playDialogueAudio = async function(encodedLine, emotion, intensity, btn) 
   }
 
   // Browser speech synthesis fallback
-  playSpeechSynthesis(line, emotion);
+  playSpeechSynthesis(line, emotion, charSelect);
   btn.innerHTML = origHtml;
   btn.disabled = false;
 };
@@ -3884,6 +3949,18 @@ function renderVoiceStudioHtml() {
             </div>
             <input id="ttsIntensitySlider" type="range" min="10" max="100" value="75" class="w-full accent-teal-500 cursor-pointer" />
           </div>
+        </div>
+
+        <!-- Ambient Soundscape Indicator Box -->
+        <div id="ttsSoundscapeIndicator" class="flex items-center justify-between text-[11px] px-3 py-2 rounded-lg bg-teal-500/10 border border-teal-500/20 text-teal-300">
+          <div class="truncate flex items-center gap-1.5">
+            <span>🎧</span>
+            <div>
+              <span class="font-bold">Soundscape:</span>
+              <span id="ttsSoundscapeDesc" class="app-text-secondary ml-1">Auto-tuned to emotion & scene</span>
+            </div>
+          </div>
+          <span id="ttsSoundscapeVolBadge" class="text-[10px] px-2 py-0.5 rounded bg-teal-500/20 text-teal-300 font-semibold shrink-0">Mix: 18%</span>
         </div>
 
         <div class="flex items-center gap-2 pt-1">
@@ -4362,8 +4439,11 @@ function bindVoiceStudioEvents() {
     const text = document.getElementById('ttsDialogueInput')?.value.trim() || "Don't go there. It's dangerous.";
     const emotion = document.getElementById('ttsEmotionSelect')?.value || 'Fearful';
     const intensity = Math.max(1, Math.min(10, Math.round(parseInt(slider?.value || '75', 10) / 10)));
+    const context = getEditorPlainText().slice(-400);
 
-    if (statusLabel) statusLabel.textContent = `Generating AI Voice (${emotion}, ${intensity}/10)...`;
+    stopActivePlayback();
+
+    if (statusLabel) statusLabel.textContent = `Generating AI Voice & Soundscape (${emotion}, ${intensity}/10)...`;
 
     await ensureBackendStory();
 
@@ -4375,23 +4455,61 @@ function bindVoiceStudioEvents() {
             text: text,
             emotion: emotion.toLowerCase(),
             intensity: intensity,
+            situation: 'Voice Studio scene recording',
+            context: context,
+            include_soundscape: true,
           }),
         });
         if (res.ok) {
           const data = await res.json();
           if (data.audio_url) {
-            if (currentTtsAudio) {
-              currentTtsAudio.pause();
-            }
+            stopActivePlayback();
+
             const fullAudioUrl = (data.audio_url.startsWith('http') ? '' : API_BASE) + data.audio_url;
             currentTtsAudio = new Audio(fullAudioUrl);
-            if (statusLabel) statusLabel.textContent = `🔊 Playing (${emotion} at ${intensity * 10}%)`;
+            activeVoiceAudio = currentTtsAudio;
+
+            if (data.soundscape_url) {
+              const fullSoundscapeUrl = (data.soundscape_url.startsWith('http') ? '' : API_BASE) + data.soundscape_url;
+              activeSoundscapeAudio = new Audio(fullSoundscapeUrl);
+              const soundscapeVol = Math.max(0.50, Math.min(0.85, data.soundscape_volume || 0.60));
+              activeSoundscapeAudio.volume = soundscapeVol;
+              activeSoundscapeAudio.loop = true;
+              activeSoundscapeAudio.play().catch(e => console.debug('Soundscape audio play error:', e));
+
+              const descElem = document.getElementById('ttsSoundscapeDesc');
+              if (descElem) {
+                descElem.textContent = `${data.soundscape_plan?.setting || 'Scene Atmosphere'} (${data.soundscape_plan?.mood || emotion})`;
+              }
+              const volBadge = document.getElementById('ttsSoundscapeVolBadge');
+              if (volBadge) {
+                volBadge.textContent = `Mix: ${Math.round(soundscapeVol * 100)}%`;
+              }
+
+              if (statusLabel) statusLabel.textContent = `🔊 Playing with Soundscape (${emotion} at ${intensity * 10}%)`;
+            } else {
+              if (statusLabel) statusLabel.textContent = `🔊 Playing (${emotion} at ${intensity * 10}%)`;
+            }
+
             currentTtsAudio.onended = () => {
+              if (activeSoundscapeAudio) {
+                const bg = activeSoundscapeAudio;
+                const fade = setInterval(() => {
+                  if (bg && bg.volume > 0.03) {
+                    bg.volume = Math.max(0, bg.volume - 0.03);
+                  } else {
+                    clearInterval(fade);
+                    try { bg.pause(); } catch (e) {}
+                  }
+                }, 40);
+              }
               if (statusLabel) statusLabel.textContent = 'AI & Speech API Ready';
             };
+
             currentTtsAudio.onerror = () => {
               playSpeechSynthesis(text, emotion);
             };
+
             await currentTtsAudio.play();
             return;
           }
@@ -4410,7 +4528,16 @@ function bindVoiceStudioEvents() {
     pauseBtn.onclick = () => {
       if (currentTtsAudio && !currentTtsAudio.paused) {
         currentTtsAudio.pause();
+        if (activeSoundscapeAudio) {
+          try { activeSoundscapeAudio.pause(); } catch (e) {}
+        }
         if (statusLabel) statusLabel.textContent = 'Paused';
+      } else if (currentTtsAudio && currentTtsAudio.paused) {
+        currentTtsAudio.play().catch(() => {});
+        if (activeSoundscapeAudio) {
+          activeSoundscapeAudio.play().catch(() => {});
+        }
+        if (statusLabel) statusLabel.textContent = '🔊 Resumed';
       } else if (window.speechSynthesis && window.speechSynthesis.speaking) {
         window.speechSynthesis.pause();
         if (statusLabel) statusLabel.textContent = 'Paused';
@@ -4422,8 +4549,12 @@ function bindVoiceStudioEvents() {
     replayBtn.onclick = () => {
       if (currentTtsAudio) {
         currentTtsAudio.currentTime = 0;
-        currentTtsAudio.play();
-        if (statusLabel) statusLabel.textContent = '🔊 Replaying...';
+        currentTtsAudio.play().catch(() => {});
+        if (activeSoundscapeAudio) {
+          activeSoundscapeAudio.currentTime = 0;
+          activeSoundscapeAudio.play().catch(() => {});
+        }
+        if (statusLabel) statusLabel.textContent = '🔊 Replaying with Soundscape...';
       } else {
         playVoice();
       }
@@ -4431,7 +4562,7 @@ function bindVoiceStudioEvents() {
   }
 }
 
-function playSpeechSynthesis(text, emotion) {
+function playSpeechSynthesis(text, emotion, characterHint) {
   const statusLabel = document.getElementById('ttsStatusLabel');
   if (!('speechSynthesis' in window) || !text) {
     if (statusLabel) statusLabel.textContent = `Simulated (${emotion})`;
@@ -4440,22 +4571,62 @@ function playSpeechSynthesis(text, emotion) {
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   const emo = (emotion || '').toLowerCase();
-  if (emo.includes('fear') || emo.includes('anxi')) {
-    utterance.pitch = 1.3;
-    utterance.rate = 1.15;
-  } else if (emo.includes('happy') || emo.includes('joy')) {
-    utterance.pitch = 1.2;
-    utterance.rate = 1.1;
-  } else if (emo.includes('sad') || emo.includes('grief')) {
-    utterance.pitch = 0.8;
-    utterance.rate = 0.85;
-  } else if (emo.includes('angry')) {
-    utterance.pitch = 1.1;
-    utterance.rate = 1.25;
+
+  // Natural human prosody: subtle rate/pitch shifts + full clear vocal presence
+  if (emo.includes('fear') || emo.includes('anxi') || emo.includes('panic')) {
+    utterance.pitch = 1.04;
+    utterance.rate = 1.04;
+  } else if (emo.includes('happy') || emo.includes('joy') || emo.includes('excite')) {
+    utterance.pitch = 1.05;
+    utterance.rate = 1.04;
+  } else if (emo.includes('sad') || emo.includes('grief') || emo.includes('sorrow')) {
+    utterance.pitch = 0.96;
+    utterance.rate = 0.95;
+  } else if (emo.includes('angry') || emo.includes('defian') || emo.includes('rage')) {
+    utterance.pitch = 0.98;
+    utterance.rate = 1.03;
+  } else {
+    utterance.pitch = 1.0;
+    utterance.rate = 1.0;
   }
+  utterance.volume = 1.0;
+
+  // Prioritize expressive, natural human voices available in the browser
+  const voices = window.speechSynthesis.getVoices() || [];
+  if (voices.length > 0) {
+    const isMale = /kabir|aarav|varun|surya|man|boy|father|brother|detective|inspector|king|lord/i.test(characterHint || '');
+    let matchedVoice = null;
+    if (isMale) {
+      matchedVoice = voices.find(v => (v.name.includes('Christopher') || v.name.includes('Guy') || v.name.includes('David') || v.name.includes('Male')) && v.lang.startsWith('en'))
+        || voices.find(v => v.lang.startsWith('en') && (v.name.includes('Online') || v.name.includes('Natural')));
+    } else {
+      matchedVoice = voices.find(v => (v.name.includes('Jenny') || v.name.includes('Aria') || v.name.includes('Zira') || v.name.includes('Female')) && v.lang.startsWith('en'))
+        || voices.find(v => v.lang.startsWith('en') && (v.name.includes('Online') || v.name.includes('Natural')));
+    }
+    if (!matchedVoice) {
+      matchedVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Online') || v.name.includes('Natural') || v.name.includes('Google')))
+        || voices.find(v => v.lang.startsWith('en'));
+    }
+    if (matchedVoice) {
+      utterance.voice = matchedVoice;
+    }
+  }
+
   utterance.onend = () => {
+    if (activeSoundscapeAudio) {
+      const bg = activeSoundscapeAudio;
+      const fade = setInterval(() => {
+        if (bg && bg.volume > 0.03) {
+          bg.volume = Math.max(0, bg.volume - 0.03);
+        } else {
+          clearInterval(fade);
+          try { bg.pause(); } catch (e) {}
+        }
+      }, 40);
+    }
     if (statusLabel) statusLabel.textContent = 'AI & Speech API Ready';
   };
+
   if (statusLabel) statusLabel.textContent = `🔊 Playing voice (${emotion})...`;
   window.speechSynthesis.speak(utterance);
 }

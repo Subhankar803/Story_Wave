@@ -88,3 +88,24 @@ def test_generate_with_canvas_context(client: TestClient, auth_headers: dict[str
     d_data = diag_res.json()
     assert len(d_data["dialogue_options"]) == 3
 
+
+def test_speak_with_soundscape(client: TestClient, auth_headers: dict[str, str], test_story: Story):
+    res = client.post(
+        f"/stories/{test_story.id}/generate/speak",
+        json={
+            "text": "Keep your voice down... the river rapids are too close.",
+            "emotion": "fear",
+            "intensity": 8,
+            "situation": "Kabir flees along the misty riverbanks",
+            "include_soundscape": True,
+        },
+        headers=auth_headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert "audio_url" in data
+    assert data["soundscape_url"] is not None
+    assert 0.50 <= data["soundscape_volume"] <= 0.90
+    assert data["soundscape_plan"] is not None
+    assert "setting" in data["soundscape_plan"]
+

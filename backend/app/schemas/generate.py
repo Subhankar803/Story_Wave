@@ -1,5 +1,5 @@
 """Generation request/response schemas (scene, dialogue, branches)."""
-from typing import Literal
+from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
@@ -44,12 +44,20 @@ class TTSRequest(BaseModel):
     emotion: str = "calm"
     intensity: int = Field(default=5, ge=1, le=10)
     voice: str = "en-IN-NeerjaNeural"
+    character: str | None = None
+    environment: str | None = None
+    situation: str | None = None
+    context: str | None = None
+    include_soundscape: bool = True
 
 
 class TTSResponse(BaseModel):
     audio_path: str
     audio_url: str | None = None
     message: str
+    soundscape_url: str | None = None
+    soundscape_volume: float = 0.55
+    soundscape_plan: dict[str, Any] | None = None
 
 
 class VoiceTranscribeResponse(BaseModel):

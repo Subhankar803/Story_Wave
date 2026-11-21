@@ -3,6 +3,7 @@ import os
 import random
 import re
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -1338,21 +1339,68 @@ def analyze_voice(audio_path: str, dialogue_text: str | None = None) -> sb.Voice
     )
 
 
+def _natural_prosody(emotion: str, intensity: int) -> tuple[str, str, str]:
+    """Calculate natural, human-like prosody offsets: clear, articulate, and well-blended."""
+    e = (emotion or "").lower()
+    k = max(1, min(10, int(intensity))) / 10.0
+
+    if any(w in e for w in ("grief", "sad", "sorrow", "mourn", "hurt", "despair")):
+        rate = -8 * k
+        pitch = -3 * k
+        vol = 8
+    elif any(w in e for w in ("anger", "angry", "rage", "fury", "defian", "strike")):
+        rate = 5 * k
+        pitch = 3 * k
+        vol = 14 * k
+    elif any(w in e for w in ("fear", "anxi", "panic", "dread", "terror", "danger")):
+        rate = 7 * k
+        pitch = 4 * k
+        vol = 10 * k
+    elif any(w in e for w in ("joy", "happy", "excite", "cheer", "delight", "amaze")):
+        rate = 6 * k
+        pitch = 4 * k
+        vol = 12 * k
+    else:
+        rate = 0
+        pitch = 0
+        vol = 8
+
+    return f"{rate:+.0f}%", f"{pitch:+.0f}Hz", f"{vol:+.0f}%"
+
+
 def speak(
     text: str,
     emotion: str,
     intensity: int,
     out_path: str | None = None,
-    voice: str = "en-IN-NeerjaNeural",
+    voice: str = "en-US-ChristopherNeural",
 ) -> str:
-    """TTS generation via edge-tts."""
+    """TTS generation via edge-tts with natural human prosody tuning."""
+    path = out_path or os.path.join(tempfile.gettempdir(), f"ai_voice_{int(time.time() * 1000)}.mp3")
     try:
-        return sb.speak(text, emotion, intensity, out_path, voice)
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+        import edge_tts
+
+        rate, pitch, vol = _natural_prosody(emotion, intensity)
+        voices = [voice] + [v for v in ("en-US-ChristopherNeural", "en-US-JennyNeural", "en-IN-NeerjaNeural", "en-US-GuyNeural") if v != voice]
+        for v in voices:
+            try:
+                coro = edge_tts.Communicate(text, v, rate=rate, pitch=pitch, volume=vol).save(path)
+                with ThreadPoolExecutor(1) as ex:
+                    ex.submit(asyncio.run, coro).result()
+                if os.path.exists(path) and os.path.getsize(path) > 100:
+                    return path
+            except Exception:
+                continue
+    except Exception as e:
+        logger.debug(f"Direct edge-tts with natural prosody failed: {e}")
+
+    try:
+        return sb.speak(text, emotion, intensity, path, voice)
     except Exception as e:
         logger.warning(f"TTS generation failed: {e}")
-        import tempfile
-        fallback = out_path or os.path.join(tempfile.gettempdir(), f"ai_voice_{int(time.time() * 1000)}.mp3")
-        if not os.path.exists(fallback):
-            with open(fallback, "wb") as f:
+        if not os.path.exists(path):
+            with open(path, "wb") as f:
                 f.write(b"")
-        return fallback
+        return path

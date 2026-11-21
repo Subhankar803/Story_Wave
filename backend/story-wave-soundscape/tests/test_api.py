@@ -1,7 +1,11 @@
 import time
 from dataclasses import replace
 
-import soundfile as sf
+try:
+    import soundfile as sf
+except ImportError:
+    sf = None
+import scipy.io.wavfile as wavfile
 from fastapi.testclient import TestClient
 
 from app.config import Settings
@@ -43,7 +47,10 @@ def test_full_flow_and_cache(tmp_path):
         assert audio.status_code == 200 and audio.headers["content-type"] == "audio/wav"
         out = tmp_path / "check.wav"
         out.write_bytes(audio.content)
-        data, sr = sf.read(str(out))
+        if sf is not None:
+            data, sr = sf.read(str(out))
+        else:
+            sr, data = wavfile.read(str(out))
         assert abs(len(data) / sr - 10.0) < 0.01
 
         # same request again: the clip comes from the cache

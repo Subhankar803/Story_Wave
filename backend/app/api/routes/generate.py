@@ -111,20 +111,57 @@ def speak_line(
     story: Annotated[Story, Depends(get_user_story)],
     db: Annotated[Session, Depends(get_db)],
 ) -> TTSResponse:
-    """Generate AI character speech with emotion-tuned prosody via edge-tts."""
+    """Generate AI character speech with emotion-tuned prosody and context soundscape atmosphere."""
     check_rate_limit(request)
+
+    # Intelligent voice selection: detect character persona for natural human delivery
+    char_str = f"{payload.character or ''} {payload.situation or ''}".lower()
+    voice = payload.voice
+    if not payload.voice or payload.voice == "en-IN-NeerjaNeural":
+        if any(w in char_str for w in ("kabir", "aarav", "varun", "surya", "detective", "inspector", "father", "brother", "man", "boy", "king", "lord")):
+            voice = "en-US-ChristopherNeural"
+        elif any(w in char_str for w in ("diya", "meera", "bithika", "mother", "sister", "woman", "girl", "queen", "lady")):
+            voice = "en-US-JennyNeural"
+        else:
+            voice = "en-US-ChristopherNeural"
+
     service = EmotionVoiceService(db)
     audio_file = service.synthesize_speech(
         text=payload.text,
         emotion=payload.emotion,
         intensity=payload.intensity,
-        voice=payload.voice,
+        voice=voice,
     )
     filename = Path(audio_file).name
+
+    soundscape_data = None
+    if payload.include_soundscape:
+        try:
+            words = len(payload.text.split())
+            est_duration = max(3.0, min(30.0, words / 2.5 + 1.5))
+            from app.services.soundscape import generate_soundscape_audio
+            soundscape_data = generate_soundscape_audio(
+                environment=payload.environment,
+                emotion=payload.emotion,
+                intensity=payload.intensity,
+                dialogue=payload.text,
+                duration_seconds=est_duration,
+                situation=payload.situation or "",
+                context=payload.context or "",
+            )
+        except Exception as e:
+            logger.info(f"Soundscape generation skipped: {e}")
+
+    from app.services.soundscape import compute_soundscape_volume
+    fallback_vol = compute_soundscape_volume(payload.emotion, payload.intensity)
+
     return TTSResponse(
         audio_path=audio_file,
         audio_url=f"/audio/{filename}",
-        message="Audio generated successfully",
+        message="Audio with emotional soundscape generated successfully" if soundscape_data else "Audio generated successfully",
+        soundscape_url=soundscape_data.get("soundscape_url") if soundscape_data else None,
+        soundscape_volume=soundscape_data.get("soundscape_volume", fallback_vol) if soundscape_data else fallback_vol,
+        soundscape_plan=soundscape_data.get("soundscape_plan") if soundscape_data else None,
     )
 
 
